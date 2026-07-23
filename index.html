@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#0f4c5c" />
   <title>雙發廠商付款簽收系統</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <h1>雙發廠商付款簽收系統</h1>
-      <p>支票辨識・付款登記・廠商手寫簽收</p>
+      <p>版本 3・支票辨識・付款登記・廠商手寫簽收</p>
     </div>
   </header>
 
@@ -133,7 +133,21 @@
     </div>
   </template>
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="app.js"></script>
+  <script>
+(async function () {
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) { console.warn("清除舊快取失敗", e); }
+})();
+</script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

@@ -32,37 +32,91 @@ $('#invoicePhoto').onchange=async e=>{invoicePhotos=await Promise.all([...e.targ
 
 $('#ocrBtn').onclick=async()=>{
  if(!checkPhotoData){alert('請先拍攝或選擇支票照片');return}
- if(!window.Tesseract){alert('辨識元件尚未載入，請確認網路後重新整理');return}
- $('#ocrBtn').disabled=true;$('#ocrStatus').textContent='正在辨識，請稍候…';
+ if(!window.Tesseract){alert('辨識元件沒有載入。請用 Safari 或 Chrome 開啟，並確認目前有網路。');return}
+ $('#ocrBtn').disabled=true;$('#ocrStatus').textContent='第一次辨識可能需要約 30～90 秒…';
  try{
-   const result=await Tesseract.recognize(checkPhotoData,'eng+chi_tra',{logger:m=>{if(m.progress)$('#ocrStatus').textContent=`辨識中 ${Math.round(m.progress*100)}%`}});
-   const text=result.data.text||'';$('#ocrText').value=text;$('#ocrStatus').textContent='辨識完成，請人工核對';
+   const worker=await Tesseract.createWorker('eng',1,{
+     workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+     corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core.wasm.js',
+     langPath:'https://tessdata.projectnaptha.com/4.0.0'
+   });
+   await worker.setParameters({
+     tessedit_char_whitelist:'0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-/.,$NT ',
+     preserve_interword_spaces:'1'
+   });
+   const result=await worker.recognize(checkPhotoData);
+   await worker.terminate();
+   const text=(result.data.text||'').trim();
+   $('#ocrText').value=text;
+   $('#ocrStatus').textContent=text?'辨識完成，請人工核對':'沒有辨識到清楚文字，請重新拍照';
    const nums=(text.match(/\b\d{6,14}\b/g)||[]);
    if(nums.length&&!$('#checkNo').value)$('#checkNo').value=nums[0];
-   const dateMatch=text.match(/(20\d{2})[\/\-.年]\s*(\d{1,2})[\/\-.月]\s*(\d{1,2})/);
+   const dateMatch=text.match(/(20\d{2})[\/\-.]\s*(\d{1,2})[\/\-.]\s*(\d{1,2})/);
    if(dateMatch&&!$('#dueDate').value)$('#dueDate').value=`${dateMatch[1]}-${String(dateMatch[2]).padStart(2,'0')}-${String(dateMatch[3]).padStart(2,'0')}`;
-   const moneyMatches=[...(text.matchAll(/(?:NT\$|\$)?\s*([\d,]{4,})/g))].map(m=>Number(m[1].replace(/,/g,''))).filter(n=>n>0&&n<100000000);
-   if(moneyMatches.length&&Number($('#grossAmount').value||0)===0){$('#grossAmount').value=Math.max(...moneyMatches);calc()}
- }catch(err){console.error(err);$('#ocrStatus').textContent='辨識失敗，請換較清楚的照片再試';alert('支票辨識失敗，請確認照片清楚、光線充足並保持網路連線')}
- finally{$('#ocrBtn').disabled=false}
+   const values=[...(text.matchAll(/(?:NT\$|\$)?\s*([\d,]{4,})/g))]
+     .map(m=>Number(m[1].replace(/,/g,''))).filter(n=>n>0&&n<100000000);
+   if(values.length&&Number($('#grossAmount').value||0)===0){$('#grossAmount').value=Math.max(...values);calc()}
+ }catch(err){
+   console.error(err);
+   $('#ocrStatus').textContent='辨識元件載入失敗';
+   alert('照片已保存，但自動辨識失敗。請確認網路後重試，或先手動輸入票號、日期及金額。');
+ }finally{$('#ocrBtn').disabled=false}
 }
 
 const screen=$('#signatureScreen'),canvas=$('#signatureCanvas'),ctx=canvas.getContext('2d');
 let drawing=false,last=null;
 function sizeCanvas(){
  const rect=canvas.getBoundingClientRect(),ratio=Math.max(1,window.devicePixelRatio||1);
- canvas.width=Math.round(rect.width*ratio);canvas.height=Math.round(rect.height*ratio);
- ctx.setTransform(ratio,0,0,ratio,0,0);ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#111';hasInk=false;
+ canvas.width=Math.max(1,Math.round(rect.width*ratio));
+ canvas.height=Math.max(1,Math.round(rect.height*ratio));
+ ctx.setTransform(ratio,0,0,ratio,0,0);
+ ctx.lineWidth=3;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#111';
+ hasInk=false;
 }
-function getPoint(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
-canvas.addEventListener('pointerdown',e=>{drawing=true;hasInk=true;last=getPoint(e);canvas.setPointerCapture(e.pointerId);ctx.beginPath();ctx.moveTo(last.x,last.y);e.preventDefault()})
-canvas.addEventListener('pointermove',e=>{if(!drawing)return;const p=getPoint(e);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;e.preventDefault()})
-function finish(e){if(!drawing)return;drawing=false;try{canvas.releasePointerCapture(e.pointerId)}catch{}}
-canvas.addEventListener('pointerup',finish);canvas.addEventListener('pointercancel',finish);canvas.addEventListener('pointerleave',finish)
-$('#openSignatureBtn').onclick=()=>{screen.classList.remove('hidden');requestAnimationFrame(()=>requestAnimationFrame(sizeCanvas))}
-$('#exitSignature').onclick=()=>screen.classList.add('hidden')
-$('#clearSignature').onclick=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);hasInk=false;signatureData=''}
-$('#confirmSignature').onclick=()=>{if(!hasInk){alert('簽名區目前是空白，請先簽名');return}signatureData=canvas.toDataURL('image/png');$('#signStatus').textContent='已完成廠商手寫簽名';screen.classList.add('hidden')}
+function coords(clientX,clientY){
+ const r=canvas.getBoundingClientRect();
+ return{x:clientX-r.left,y:clientY-r.top};
+}
+function beginAt(x,y,e){
+ drawing=true;hasInk=true;last=coords(x,y);
+ ctx.beginPath();ctx.moveTo(last.x,last.y);
+ if(e)e.preventDefault();
+}
+function moveAt(x,y,e){
+ if(!drawing)return;
+ const p=coords(x,y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;
+ if(e)e.preventDefault();
+}
+function finishDraw(e){drawing=false;if(e)e.preventDefault()}
+
+if(window.PointerEvent){
+ canvas.addEventListener('pointerdown',e=>beginAt(e.clientX,e.clientY,e),{passive:false});
+ canvas.addEventListener('pointermove',e=>moveAt(e.clientX,e.clientY,e),{passive:false});
+ canvas.addEventListener('pointerup',finishDraw,{passive:false});
+ canvas.addEventListener('pointercancel',finishDraw,{passive:false});
+} else {
+ canvas.addEventListener('touchstart',e=>{const t=e.touches[0];beginAt(t.clientX,t.clientY,e)},{passive:false});
+ canvas.addEventListener('touchmove',e=>{const t=e.touches[0];moveAt(t.clientX,t.clientY,e)},{passive:false});
+ canvas.addEventListener('touchend',finishDraw,{passive:false});
+ canvas.addEventListener('mousedown',e=>beginAt(e.clientX,e.clientY,e));
+ canvas.addEventListener('mousemove',e=>moveAt(e.clientX,e.clientY,e));
+ window.addEventListener('mouseup',finishDraw);
+}
+$('#openSignatureBtn').onclick=()=>{
+ document.body.classList.add('signature-open');
+ screen.classList.remove('hidden');
+ setTimeout(sizeCanvas,150);
+}
+$('#exitSignature').onclick=()=>{screen.classList.add('hidden');document.body.classList.remove('signature-open')}
+$('#clearSignature').onclick=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);hasInk=false;signatureData='';$('#signStatus').textContent='尚未簽名'}
+$('#confirmSignature').onclick=()=>{
+ if(!hasInk){alert('簽名區目前是空白，請先用手指簽名');return}
+ signatureData=canvas.toDataURL('image/png');
+ $('#signStatus').textContent='已完成廠商手寫簽名';
+ screen.classList.add('hidden');
+ document.body.classList.remove('signature-open');
+}
+window.addEventListener('orientationchange',()=>{if(!screen.classList.contains('hidden'))setTimeout(sizeCanvas,300)});
 
 $('#paymentForm').addEventListener('submit',e=>{
  e.preventDefault();
