@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#0f4c5c" />
   <title>雙發廠商付款簽收系統</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <header class="topbar">
     <div>
       <h1>雙發廠商付款簽收系統</h1>
-      <p>版本 3・支票辨識・付款登記・廠商手寫簽收</p>
+      <p>版本 4・拍照保存・人工核對・廠商手寫簽收</p>
     </div>
   </header>
 
@@ -28,7 +28,7 @@
       <button id="newPaymentBtn" class="primary">＋ 新增廠商付款</button>
       <button id="exportBtn" class="secondary">匯出備份</button>
       <label class="secondary file-label">匯入備份
-        <input id="importInput" type="file" accept=".json,application/json" />
+        <input id="importInput" type="file" accept=".json,application/json">
       </label>
     </section>
 
@@ -40,7 +40,7 @@
     <section class="card">
       <div class="section-head">
         <h2>付款紀錄</h2>
-        <input id="searchInput" placeholder="搜尋廠商、票號、月份" />
+        <input id="searchInput" placeholder="搜尋廠商、票號、月份">
       </div>
       <div id="paymentList" class="list empty">尚無資料</div>
     </section>
@@ -54,16 +54,18 @@
       </div>
 
       <div class="form-grid">
-        <label>廠商名稱<input id="vendorName" required placeholder="例如：台灣櫻花" /></label>
-        <label>收款月份<input id="paymentMonth" type="month" required /></label>
-        <label>收款人姓名<input id="collectorName" placeholder="廠商收款人" /></label>
+        <label>廠商名稱<input id="vendorName" required placeholder="例如：台灣櫻花"></label>
+        <label>收款月份<input id="paymentMonth" type="month" required></label>
+        <label>收款人姓名<input id="collectorName" placeholder="廠商收款人"></label>
         <label>付款方式
-          <select id="paymentMethod"><option>支票</option><option>匯款</option><option>現金</option><option>其他</option></select>
+          <select id="paymentMethod">
+            <option>支票</option><option>匯款</option><option>現金</option><option>其他</option>
+          </select>
         </label>
-        <label>支票票號<input id="checkNo" placeholder="辨識後仍請核對" /></label>
-        <label>支票到期日<input id="dueDate" type="date" /></label>
-        <label>貨款合計<input id="grossAmount" type="number" min="0" step="1" inputmode="numeric" value="0" /></label>
-        <label>前期未付／補款<input id="adjustmentAmount" type="number" step="1" inputmode="numeric" value="0" /></label>
+        <label>支票票號<input id="checkNo" placeholder="請依支票人工輸入"></label>
+        <label>支票到期日<input id="dueDate" type="date"></label>
+        <label>貨款合計<input id="grossAmount" type="number" min="0" step="1" inputmode="numeric" value="0"></label>
+        <label>前期未付／補款<input id="adjustmentAmount" type="number" step="1" inputmode="numeric" value="0"></label>
       </div>
 
       <h3>扣款明細</h3>
@@ -76,35 +78,31 @@
         <div class="final"><span>本次實付</span><strong id="netDisplay">$0</strong></div>
       </div>
 
-      <h3>支票照片與辨識</h3>
+      <h3>照片附件</h3>
       <div class="photo-grid">
         <label class="photo-upload">拍攝／選擇支票
-          <input id="checkPhoto" type="file" accept="image/*" capture="environment" />
+          <input id="checkPhoto" type="file" accept="image/*" capture="environment">
           <img id="checkPreview" alt="">
         </label>
-        <div class="ocr-panel">
-          <button type="button" id="ocrBtn" class="primary full">辨識支票文字</button>
-          <div id="ocrStatus" class="ocr-status">尚未辨識</div>
-          <textarea id="ocrText" rows="6" placeholder="辨識結果會顯示在這裡"></textarea>
-          <small>辨識結果可能有誤，儲存前請核對票號、日期及金額。</small>
-        </div>
+        <label class="photo-upload">拍攝／選擇貨單
+          <input id="invoicePhoto" type="file" accept="image/*" capture="environment" multiple>
+          <div id="invoicePreview" class="thumbs"></div>
+        </label>
       </div>
-
-      <h3>貨單附件</h3>
-      <label class="photo-upload">拍攝／選擇貨單
-        <input id="invoicePhoto" type="file" accept="image/*" capture="environment" multiple />
-        <div id="invoicePreview" class="thumbs"></div>
-      </label>
+      <p class="hint">照片只作為附件保存，票號、日期與金額請人工核對後輸入。</p>
 
       <label>備註<textarea id="notes" rows="3" placeholder="付款內容、退貨、折讓、價差等"></textarea></label>
 
       <div class="sign-box">
-        <div><strong>廠商手寫簽名</strong><p id="signStatus">尚未簽名</p></div>
+        <div>
+          <strong>廠商手寫簽名</strong>
+          <p id="signStatus">尚未簽名</p>
+        </div>
         <button type="button" id="openSignatureBtn" class="primary">請廠商簽名</button>
       </div>
 
       <label class="confirm-line">
-        <input id="verified" type="checkbox" required />
+        <input id="verified" type="checkbox" required>
         已核對收款月份、貨款、扣款、票號、金額與到期日
       </label>
 
@@ -114,7 +112,10 @@
 
   <div id="signatureScreen" class="signature-screen hidden">
     <div class="signature-header">
-      <div><strong>廠商手寫簽名</strong><span>請直接用手指或滑鼠簽名</span></div>
+      <div>
+        <strong>廠商手寫簽名</strong>
+        <span>請直接在白色區域用手指或滑鼠簽名</span>
+      </div>
       <button id="exitSignature" class="icon-btn">×</button>
     </div>
     <div class="canvas-wrap"><canvas id="signatureCanvas"></canvas></div>
@@ -126,28 +127,27 @@
 
   <template id="deductionTemplate">
     <div class="deduction-row">
-      <input class="deduction-name" placeholder="扣款項目" />
-      <input class="deduction-note" placeholder="說明" />
-      <input class="deduction-amount" type="number" min="0" step="1" value="0" inputmode="numeric" />
+      <input class="deduction-name" placeholder="扣款項目">
+      <input class="deduction-note" placeholder="說明">
+      <input class="deduction-amount" type="number" min="0" step="1" value="0" inputmode="numeric">
       <button type="button" class="remove-row">刪除</button>
     </div>
   </template>
 
   <script>
-(async function () {
-  try {
-    if ("serviceWorker" in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map(r => r.unregister()));
-    }
-    if ("caches" in window) {
-      const keys = await caches.keys();
-      await Promise.all(keys.map(k => caches.delete(k)));
-    }
-  } catch (e) { console.warn("清除舊快取失敗", e); }
-})();
-</script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="app.js?v=3"></script>
+  (async function(){
+    try{
+      if('serviceWorker' in navigator){
+        const regs=await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r=>r.unregister()));
+      }
+      if('caches' in window){
+        const keys=await caches.keys();
+        await Promise.all(keys.map(k=>caches.delete(k)));
+      }
+    }catch(e){}
+  })();
+  </script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
