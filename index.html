@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f4c5c" />
+  <title>雙發廠商付款簽收系統</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>雙發廠商付款簽收系統</h1>
+      <p>手機版・支票・貨單・扣款・手寫簽收</p>
+    </div>
+    <button id="installBtn" class="secondary hidden">加入主畫面</button>
+  </header>
+
+  <main>
+    <section class="summary-grid">
+      <div class="card metric"><span>本月付款</span><strong id="monthTotal">$0</strong></div>
+      <div class="card metric"><span>待簽收</span><strong id="pendingSign">0</strong></div>
+      <div class="card metric warning"><span>7天內到期</span><strong id="dueSoon">0</strong></div>
+      <div class="card metric"><span>已完成</span><strong id="completed">0</strong></div>
+    </section>
+
+    <section class="card actions">
+      <button id="newPaymentBtn" class="primary">＋ 新增廠商付款</button>
+      <button id="exportBtn" class="secondary">匯出備份到 iCloud Drive</button>
+      <label class="secondary file-label">匯入備份
+        <input id="importInput" type="file" accept=".json,application/json" />
+      </label>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>即將到期支票</h2>
+      </div>
+      <div id="dueList" class="list empty">目前沒有即將到期的支票</div>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>付款紀錄</h2>
+        <input id="searchInput" placeholder="搜尋廠商、票號、月份" />
+      </div>
+      <div id="paymentList" class="list empty">尚無資料</div>
+    </section>
+  </main>
+
+  <dialog id="paymentDialog">
+    <form id="paymentForm" method="dialog">
+      <div class="dialog-head">
+        <h2>新增付款簽收單</h2>
+        <button type="button" id="closeDialog" class="icon-btn">×</button>
+      </div>
+
+      <div class="form-grid">
+        <label>廠商名稱
+          <input id="vendorName" required placeholder="例如：台灣櫻花" />
+        </label>
+        <label>收款月份
+          <input id="paymentMonth" type="month" required />
+        </label>
+        <label>收款人姓名
+          <input id="collectorName" placeholder="廠商收款人" />
+        </label>
+        <label>付款方式
+          <select id="paymentMethod">
+            <option>支票</option>
+            <option>匯款</option>
+            <option>現金</option>
+            <option>其他</option>
+          </select>
+        </label>
+        <label>支票票號
+          <input id="checkNo" placeholder="可預先輸入或選擇" />
+        </label>
+        <label>支票到期日
+          <input id="dueDate" type="date" />
+        </label>
+        <label>貨款合計
+          <input id="grossAmount" type="number" min="0" step="1" inputmode="numeric" value="0" />
+        </label>
+        <label>前期未付／補款
+          <input id="adjustmentAmount" type="number" step="1" inputmode="numeric" value="0" />
+        </label>
+      </div>
+
+      <h3>扣款明細</h3>
+      <div id="deductionRows"></div>
+      <button type="button" id="addDeductionBtn" class="secondary full">＋ 新增扣款項目</button>
+
+      <div class="totals">
+        <div><span>貨款合計</span><strong id="grossDisplay">$0</strong></div>
+        <div><span>扣款合計</span><strong id="deductionDisplay">$0</strong></div>
+        <div class="final"><span>本次實付</span><strong id="netDisplay">$0</strong></div>
+      </div>
+
+      <h3>照片附件</h3>
+      <div class="photo-grid">
+        <label class="photo-upload">拍支票
+          <input id="checkPhoto" type="file" accept="image/*" capture="environment" />
+          <img id="checkPreview" alt="">
+        </label>
+        <label class="photo-upload">拍貨單
+          <input id="invoicePhoto" type="file" accept="image/*" capture="environment" multiple />
+          <div id="invoicePreview" class="thumbs"></div>
+        </label>
+      </div>
+
+      <label>備註
+        <textarea id="notes" rows="3" placeholder="付款內容、退貨、折讓、價差等"></textarea>
+      </label>
+
+      <div class="sign-box">
+        <div>
+          <strong>廠商手寫簽名</strong>
+          <p id="signStatus">尚未簽名</p>
+        </div>
+        <button type="button" id="openSignatureBtn" class="primary">請廠商簽名</button>
+      </div>
+
+      <label class="confirm-line">
+        <input id="verified" type="checkbox" required />
+        已核對收款月份、貨款、扣款、票號、金額與到期日
+      </label>
+
+      <button id="savePaymentBtn" class="primary full" type="submit">儲存付款簽收單</button>
+    </form>
+  </dialog>
+
+  <div id="signatureScreen" class="signature-screen hidden">
+    <div class="signature-header">
+      <div>
+        <strong>廠商手寫簽名</strong>
+        <span>請直接在大畫面上用手指簽名</span>
+      </div>
+      <button id="exitSignature" class="icon-btn">×</button>
+    </div>
+    <canvas id="signatureCanvas"></canvas>
+    <div class="signature-actions">
+      <button id="clearSignature" class="secondary">重新簽名</button>
+      <button id="confirmSignature" class="primary">確認簽收</button>
+    </div>
+  </div>
+
+  <template id="deductionTemplate">
+    <div class="deduction-row">
+      <input class="deduction-name" placeholder="扣款項目，例如退貨扣款" />
+      <input class="deduction-note" placeholder="說明，例如退回熱水器1台" />
+      <input class="deduction-amount" type="number" min="0" step="1" value="0" inputmode="numeric" />
+      <button type="button" class="remove-row">刪除</button>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
