@@ -8,7 +8,14 @@ function migrate(n){n={...structuredClone(defaults),...n};if(n.vendors?.length&&
 function loadSettings(){try{return {autoBackup:true,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch{return {autoBackup:true}}}
 function save(){
   const payload=JSON.stringify(db);
-  try{localStorage.setItem(KEY,payload)}catch(err){
+  try{
+    localStorage.setItem(KEY,payload);
+    // 寫入後立刻讀回驗證，避免 Safari 看似成功但實際未保存完整資料。
+    const verified=JSON.parse(localStorage.getItem(KEY)||'null');
+    if(!verified||!Array.isArray(verified.payments)||verified.payments.length!==db.payments.length){
+      throw new Error('付款資料驗證失敗，請重新儲存');
+    }
+  }catch(err){
     if(err?.name==='QuotaExceededError'||err?.code===22)throw new Error('手機儲存空間不足，請先匯出備份並刪除部分舊照片資料');
     throw err;
   }
@@ -33,7 +40,7 @@ function vendorLabel(v){return `${v.code}－${v.name}`}
 function findVendor(code){return db.vendors.find(v=>String(v.code)===String(code))}
 function renderLists(){const el=$('#vendorOptions');if(el)el.innerHTML=db.vendors.slice().sort((a,b)=>String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true})).map(v=>`<option value="${esc(vendorLabel(v))}"></option>`).join('')}
 function resolveVendorInput(raw){const q=String(raw||'').trim();if(!q)return null;const normalized=q.replace(/[－–—-]/g,' ').replace(/\s+/g,' ').trim().toLowerCase();let v=db.vendors.find(v=>vendorLabel(v).toLowerCase()===q.toLowerCase()||String(v.code).toLowerCase()===q.toLowerCase()||String(v.name).toLowerCase()===q.toLowerCase());if(v)return v;const matches=db.vendors.filter(v=>`${v.code} ${v.name}`.toLowerCase().includes(normalized));return matches.length===1?matches[0]:null}
-function start(){draft={};invoicePhotos=[];checkPhoto='';signatureData='';hasSignature=false;isSaving=false;const saveBtn=$('#saveBtn');if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='確認存檔'}$('#vendorInput').value='';$('#payMonth').value=new Date().toISOString().slice(0,7);$('#amountDue').value='';$('#rate').value='95';$('#roundMode').value='ones';$('#amountPaid').value='';$('#deductionAmount').value='0';$('#deductionNote').value='';renderPhotos();updateCalculation()}
+function start(){draft={clientSaveToken:(crypto.randomUUID?crypto.randomUUID():`${Date.now()}-${Math.random()}`)};invoicePhotos=[];checkPhoto='';signatureData='';hasSignature=false;isSaving=false;const saveBtn=$('#saveBtn');if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='確認存檔'}$('#vendorInput').value='';$('#payMonth').value=new Date().toISOString().slice(0,7);$('#amountDue').value='';$('#rate').value='95';$('#roundMode').value='ones';$('#amountPaid').value='';$('#deductionAmount').value='0';$('#deductionNote').value='';renderPhotos();updateCalculation()}
 $('#vendorNext').onclick=()=>{const raw=$('#vendorInput').value;const v=resolveVendorInput(raw);if(!v)return toast('找不到唯一廠商，請輸入完整代號、名稱，或從建議清單點選');$('#vendorInput').value=vendorLabel(v);draft.vendorCode=v.code;draft.vendor=v.name;show('payment')};$('#quickAddVendor').onclick=()=>show('vendors');
 function calcPaid(){const due=Number($('#amountDue').value||0),rate=Number($('#rate').value||0)/100,raw=due*rate,mode=$('#roundMode').value;let val=raw;if(mode==='ones')val=Math.floor(raw/10)*10;if(mode==='tens')val=Math.floor(raw/100)*100;if(mode==='hundreds')val=Math.floor(raw/1000)*1000;if(mode==='round')val=Math.round(raw);return Math.max(0,val)}
 function updateCalculation(){const v=calcPaid();$('#calculatedPaid').textContent='$'+money(v);if(!$('#amountPaid').dataset.manual)$('#amountPaid').value=v||'';$('#deductionAmount').value=Math.max(0,Number($('#amountDue').value||0)-Number($('#amountPaid').value||0))}
@@ -43,7 +50,7 @@ function renderMethods(){$('#methodChoices').innerHTML=db.methods.map(m=>`<butto
 function renderBanks(){$('#bankChoices').innerHTML=db.banks.map(b=>`<button class="choice" data-b="${esc(b)}">${esc(b)}</button>`).join('');$$('[data-b]').forEach(b=>b.onclick=()=>{draft.bank=b.dataset.b;$('#selectedBank').value=draft.bank;const isCheck=draft.method==='支票';$('#checkFields').classList.toggle('hidden',!isCheck);$('#transferFields').classList.toggle('hidden',isCheck);const a=(db.checks[draft.bank]||[]).filter(x=>x.status!=='已使用');$('#checkNumber').innerHTML='<option value="">請選擇支票號碼</option>'+a.map(x=>`<option>${esc(x.number)}</option>`).join('');$('#checkAmount').value=draft.amountPaid||'';show('check')})}
 $('#checkNext').onclick=()=>{Object.assign(draft,{checkNumber:$('#checkNumber').value,checkDueDate:$('#checkDueDate').value,transferDate:$('#transferDate').value,checkAmount:$('#checkAmount').value});if(draft.method==='支票'&&(!draft.checkNumber||!draft.checkDueDate))return toast('請選擇票號並填到期日');if(draft.method!=='支票'&&!draft.transferDate)return toast('請填預定轉帳日');showPhotosPage()};
 function showPhotosPage(){$('#checkPhotoBlock').classList.toggle('hidden',draft.method!=='支票');show('photos')}
-function fileData(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const max=1000,scale=Math.min(1,max/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*scale));cv.height=Math.max(1,Math.round(im.height*scale));cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);res(cv.toDataURL('image/jpeg',.65))};im.onerror=rej;im.src=r.result};r.onerror=rej;r.readAsDataURL(f)})}
+function fileData(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{const max=720,scale=Math.min(1,max/Math.max(im.width,im.height)),cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(im.width*scale));cv.height=Math.max(1,Math.round(im.height*scale));cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);res(cv.toDataURL('image/jpeg',.50))};im.onerror=rej;im.src=r.result};r.onerror=rej;r.readAsDataURL(f)})}
 $('#invoicePhoto').onchange=async e=>{for(const f of e.target.files)invoicePhotos.push(await fileData(f));renderPhotos()};$('#checkPhoto').onchange=async e=>{if(e.target.files[0])checkPhoto=await fileData(e.target.files[0]);renderPhotos()};function renderPhotos(){$('#invoicePreview').innerHTML=invoicePhotos.map(x=>`<img src="${x}">`).join('');$('#checkPreview').innerHTML=checkPhoto?`<img src="${checkPhoto}">`:''}
 $('#photosNext').onclick=()=>show('signature');
 const c=$('#signatureCanvas'),ctx=c.getContext('2d');
@@ -76,14 +83,20 @@ $('#saveBtn').onclick=async()=>{
   const id=crypto.randomUUID?crypto.randomUUID():String(Date.now());
   // 先建立唯一儲存識別碼，再檢查重複，避免連按或瀏覽器重送。
   draft.clientSaveToken=draft.clientSaveToken||id;
-  const duplicate=db.payments.some(x=>x.clientSaveToken===draft.clientSaveToken);
-  if(duplicate){toast('這筆資料已經儲存');history=['home','search','detail'];openDetail(duplicate.id);return}
+  const duplicate=db.payments.find(x=>x.clientSaveToken===draft.clientSaveToken);
+  if(duplicate){toast('這筆資料已經儲存');history=['home','search','detail'];openDetail(duplicate.id);isSaving=false;return}
   const p={id,serial:nextSerial(),...draft,clientSaveToken:draft.clientSaveToken,status:statusFor(draft),invoicePhotos:[...invoicePhotos],checkPhoto,signatureData,createdAt:new Date().toISOString()};
   db.payments.unshift(p);
   let usedCheck=null;
   if(p.method==='支票'){usedCheck=(db.checks[p.bank]||[]).find(x=>x.number===p.checkNumber);if(usedCheck)Object.assign(usedCheck,{status:'已使用',dueDate:p.checkDueDate,paymentId:id})}
   try{
-    save();lastId=id;renderDue();
+    const expectedCount=db.payments.length;
+    save();
+    // 重新由手機儲存區讀回，確認新增的每一筆都真的存在。
+    db=migrate(JSON.parse(localStorage.getItem(KEY)||'null'));
+    if(db.payments.length!==expectedCount||!db.payments.some(x=>x.id===id))throw new Error('本筆資料沒有完整寫入，請重新儲存');
+    lastId=id;renderDue();
+    $('#searchInput').value='';$('#statusFilter').value='';runSearch();
     // 儲存完成立即跳到本筆明細，避免使用者再次按儲存。
     history=['home','search','detail'];openDetail(id);toast('付款資料已儲存');
   }catch(err){
@@ -93,7 +106,7 @@ $('#saveBtn').onclick=async()=>{
     isSaving=false;btn.disabled=false;btn.textContent='確認存檔';
   }
 };$('#newAgain').onclick=()=>{start();history=['home','vendor'];show('vendor',false)};$('#viewLast').onclick=()=>openDetail(lastId);
-$('#searchInput').oninput=runSearch;$('#statusFilter').onchange=runSearch;function runSearch(){const q=($('#searchInput').value||'').trim().toLowerCase(),st=$('#statusFilter').value,a=db.payments.filter(p=>(!q||[p.vendor,p.vendorCode,p.serial,p.checkNumber,p.bank].join(' ').toLowerCase().includes(q))&&(!st||p.status===st));$('#paymentList').innerHTML=a.length?a.map(p=>`<div class="record"><h3>${esc(p.serial)}｜${esc(p.vendorCode)} ${esc(p.vendor)}</h3><div class="meta">${esc(p.month)}｜實付 $${money(p.amountPaid)}<br>付款憑證：${esc(voucher(p))}　<span class="status-pill">${esc(p.status)}</span></div><button class="secondary full" data-detail="${p.id}">查看明細</button></div>`).join(''):'<p class="hint">尚無符合資料。</p>';$$('[data-detail]').forEach(b=>b.onclick=()=>openDetail(b.dataset.detail))}
+$('#searchInput').oninput=runSearch;$('#statusFilter').onchange=runSearch;function runSearch(){const q=($('#searchInput').value||'').trim().toLowerCase(),st=$('#statusFilter').value,a=db.payments.filter(p=>(!q||[p.vendor,p.vendorCode,p.serial,p.checkNumber,p.bank].join(' ').toLowerCase().includes(q))&&(!st||p.status===st));const counter=$('#paymentCount');if(counter)counter.textContent=`全部 ${db.payments.length} 筆｜目前顯示 ${a.length} 筆`;$('#paymentList').innerHTML=a.length?a.map(p=>`<div class="record"><h3>${esc(p.serial)}｜${esc(p.vendorCode)} ${esc(p.vendor)}</h3><div class="meta">${esc(p.month)}｜實付 $${money(p.amountPaid)}<br>付款憑證：${esc(voucher(p))}　<span class="status-pill">${esc(p.status)}</span></div><button class="secondary full" data-detail="${p.id}">查看明細</button></div>`).join(''):'<p class="hint">尚無符合資料。</p>';$$('[data-detail]').forEach(b=>b.onclick=()=>openDetail(b.dataset.detail))}
 function openDetail(id){const p=db.payments.find(x=>x.id===id);if(!p)return;currentDetailId=id;$('#detailBody').innerHTML=htmlRows([...rows(p),['建立時間',new Date(p.createdAt).toLocaleString('zh-TW')]]);$('#settleBtn').classList.toggle('hidden',p.status==='已銷帳'||p.status==='作廢');const imgs=[...(p.invoicePhotos||[]),p.checkPhoto,p.signatureData].filter(Boolean);$('#detailImages').innerHTML=imgs.map(x=>`<img src="${x}">`).join('');show('detail')}
 function printDocument(title,body){
   const w=window.open('','_blank','width=900,height=900');
