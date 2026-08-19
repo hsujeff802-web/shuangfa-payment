@@ -1,9 +1,9 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0263-signature-one-screen';
+const CACHE_NAME='shuangfa-payment-v8.3-build0264-delete-payment';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83263',
-  './app.js?v=83263','./v83.js?v=83263',
+  './styles.css?v=83264',
+  './app.js?v=83264','./v83.js?v=83264',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
