@@ -1,9 +1,9 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0259-signature-photo-storage-fix';
+const CACHE_NAME='shuangfa-payment-v8.3-build0260-mobile-storage-fix';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83259',
-  './app.js?v=83259','./v83.js?v=83259',
+  './styles.css?v=83260',
+  './app.js?v=83260','./v83.js?v=83260',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
