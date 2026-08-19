@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0287
+/* 雙發付款管理系統 V8.3 RC Build 0288
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -283,7 +283,7 @@
       </div>
       <div class="card"><h3>🔐 登入與密碼</h3>
         <p id="currentLoginInfo" class="hint"></p>
-        <div id="defaultPasswordNotice" class="lock-notice hidden">目前仍使用初始密碼 1234，建議立即修改。</div>
+        <div id="defaultPasswordNotice" class="lock-notice hidden">目前仍使用初始密碼，請登入後立即修改。</div>
         <label>目前密碼<input id="oldPassword" type="password"></label>
         <label>新密碼<input id="newPassword" type="password" minlength="4"></label>
         <label>再次輸入新密碼<input id="newPassword2" type="password" minlength="4"></label>
@@ -609,13 +609,16 @@
     showLogin();
   }
 
-  function restoreSession() {
+  async function restoreSession() {
     try {
       currentUser = JSON.parse(sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY) || 'null');
     } catch {
       currentUser = null;
     }
-    if (currentUser) {
+    const auth = await ensureAuth();
+    const storedUser = currentUser && auth.users.find(user => user.enabled !== false && String(user.code || '').toLowerCase() === String(currentUser.code || '').toLowerCase());
+    if (storedUser) {
+      currentUser = { code: storedUser.code, name: storedUser.name, role: storedUser.role, mustChangePassword: !!storedUser.mustChangePassword };
       hideLogin();
       history = ['home'];
       if (typeof show === 'function') show('home', false);
@@ -623,6 +626,9 @@
       resetIdleTimer();
       queueStartupAnnouncements();
     } else {
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_KEY);
+      currentUser = null;
       showLogin();
     }
   }
@@ -965,7 +971,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0287\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0288\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1044,7 +1050,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0287<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0288<br><small>照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
@@ -1058,7 +1064,7 @@
     applyVoiceSettings();
     installEvents();
     await ensureAuth();
-    restoreSession();
+    await restoreSession();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

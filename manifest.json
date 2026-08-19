@@ -1,7 +1,7 @@
 {
-  "name": "雙發付款管理系統 V8.3 RC Build 0287・登出內部備份版",
+  "name": "雙發付款管理系統 V8.3 RC Build 0288・登出內部備份版",
   "short_name": "雙發付款",
-  "start_url": "./index.html?v=83287",
+  "start_url": "./index.html?v=83288",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f1f9fa",
