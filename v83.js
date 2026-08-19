@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0289
+/* 雙發付款管理系統 V8.3 RC Build 0290
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -281,13 +281,16 @@
         <div class="inline"><button id="testLogoutSound" class="secondary">試聽登出聲音</button><button id="removeLogoutMusic" class="secondary">移除登出音樂</button></div>
         <button id="saveLoginLogoutSound" class="primary full">儲存登入／登出設定</button>
       </div>
-      <div class="card"><h3>🔐 登入與密碼</h3>
+      <div class="card"><h3>🔐 登入帳號與密碼</h3>
         <p id="currentLoginInfo" class="hint"></p>
+        <p class="hint credential-hint">登入後可修改自己的登入帳號或密碼。每次變更都必須先輸入目前密碼確認。</p>
+        <label>目前登入帳號<input id="currentLoginCode" readonly autocomplete="username"></label>
+        <label>新登入帳號<input id="newLoginCode" maxlength="30" autocomplete="username" placeholder="留空代表不修改帳號"></label>
         <div id="defaultPasswordNotice" class="lock-notice hidden">目前仍使用初始密碼，請登入後立即修改。</div>
         <label>目前密碼<input id="oldPassword" type="password"></label>
         <label>新密碼<input id="newPassword" type="password" minlength="4"></label>
         <label>再次輸入新密碼<input id="newPassword2" type="password" minlength="4"></label>
-        <button id="changePassword" class="primary full">修改密碼</button>
+        <button id="changePassword" class="primary full">儲存登入帳號／密碼</button>
         <button id="logoutBtn" class="secondary full">登出</button>
       </div>
 `);
@@ -347,6 +350,8 @@
     tag.textContent = `已登入：${currentUser.name}（${currentUser.role === 'admin' ? '管理員' : '員工'}）`;
     tag.classList.remove('hidden');
     q('#currentLoginInfo').textContent = `目前登入：${currentUser.name}｜代碼 ${currentUser.code}`;
+    const currentLoginCode = q('#currentLoginCode');
+    if (currentLoginCode) currentLoginCode.value = currentUser.code;
     q('#defaultPasswordNotice').classList.toggle('hidden', !currentUser.mustChangePassword);
   }
 
@@ -946,32 +951,57 @@
 
     q('#changePassword').onclick = async () => {
       const oldPassword = q('#oldPassword').value;
+      const newLoginCode = q('#newLoginCode').value.trim();
       const newPassword = q('#newPassword').value;
       const newPassword2 = q('#newPassword2').value;
-      if (newPassword.length < 4) return toast('新密碼至少四碼');
-      if (newPassword !== newPassword2) return toast('兩次新密碼不相同');
+      const requestedCode = newLoginCode || currentUser.code;
+      const passwordChanged = Boolean(newPassword);
+      const codeChanged = requestedCode.toLowerCase() !== String(currentUser.code).toLowerCase();
+      if (!codeChanged && !passwordChanged) return toast('請輸入新登入帳號或新密碼');
+      if (newLoginCode && (newLoginCode.length < 3 || newLoginCode.length > 30 || /\s/.test(newLoginCode))) {
+        return toast('登入帳號需為 3～30 碼，且不能包含空白');
+      }
+      if (passwordChanged && newPassword.length < 4) return toast('新密碼至少四碼');
+      if (passwordChanged && newPassword !== newPassword2) return toast('兩次新密碼不相同');
 
       const auth = await ensureAuth();
-      const user = auth.users.find(x => x.code === currentUser.code);
+      const sameCode = value => String(value || '').trim().toLowerCase();
+      const user = auth.users.find(x => sameCode(x.code) === sameCode(currentUser.code) && x.enabled !== false);
       if (!user || user.passwordHash !== await hash(oldPassword)) return toast('目前密碼不正確');
+      if (codeChanged && auth.users.some(x => x !== user && x.enabled !== false && sameCode(x.code) === sameCode(requestedCode))) {
+        return toast('這個登入帳號已經存在，請換一個帳號');
+      }
 
-      user.passwordHash = await hash(newPassword);
-      user.mustChangePassword = false;
-      user.passwordChangedAt = now();
+      const oldCode = user.code;
+      if (codeChanged) user.code = requestedCode;
+      if (passwordChanged) {
+        user.passwordHash = await hash(newPassword);
+        user.mustChangePassword = false;
+        user.passwordChangedAt = now();
+      }
+      user.updatedAt = now();
       writeAuth(auth);
-      currentUser.mustChangePassword = false;
-      if (localStorage.getItem(SESSION_KEY)) localStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
-      else sessionStorage.setItem(SESSION_KEY, JSON.stringify(currentUser));
-      q('#oldPassword').value = q('#newPassword').value = q('#newPassword2').value = '';
+      currentUser.code = user.code;
+      currentUser.mustChangePassword = !!user.mustChangePassword;
+      const sessionValue = JSON.stringify(currentUser);
+      if (localStorage.getItem(SESSION_KEY)) {
+        localStorage.setItem(SESSION_KEY, sessionValue);
+        sessionStorage.removeItem(SESSION_KEY);
+      } else {
+        sessionStorage.setItem(SESSION_KEY, sessionValue);
+        localStorage.removeItem(SESSION_KEY);
+      }
+      q('#oldPassword').value = q('#newLoginCode').value = q('#newPassword').value = q('#newPassword2').value = '';
       renderUser();
-      saveAudit('修改密碼');
-      originalToast('密碼已修改');
-      speak('密碼已修改完成。', 'success');
+      await Promise.resolve(saveAudit('修改登入帳號與密碼', { oldCode, newCode: user.code, passwordChanged }));
+      const changedText = codeChanged && passwordChanged ? '登入帳號與密碼' : codeChanged ? '登入帳號' : '密碼';
+      originalToast(`${changedText}已修改並保存`);
+      speak(`${changedText}已修改完成。`, 'success');
     };
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0289\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0290\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1050,7 +1080,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0289<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0290<br><small>登入帳號與密碼可在登入後修改，照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;

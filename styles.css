@@ -349,6 +349,8 @@ button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 .center{text-align:center}
 .setting-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .setting-grid label{margin:5px 0}
+.credential-hint{margin:4px 0 10px}
+input[readonly]{background:#eef8f9;color:var(--muted);cursor:not-allowed}
 
 .toast{
   position:fixed;
