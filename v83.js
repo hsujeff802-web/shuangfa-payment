@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 DEV Build 0267
+/* 雙發付款管理系統 V8.3 RC Build 0277
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -299,10 +299,10 @@
     if (!currentUser) return;
     try {
       if (typeof saveAudit === 'function') saveAudit('閒置自動登出');
-      if (typeof writeToIndexedDB === 'function') await writeToIndexedDB(db);
-      if (typeof downloadBackup === 'function') downloadBackup(false);
-      originalToast('閒置 30 分鐘，已完成備份，準備自動登出');
-      await speakPromise('已閒置 30 分鐘，資料已備份完成，系統即將自動登出。');
+      if (typeof window.shuangfaInternalBackup === 'function') await window.shuangfaInternalBackup('閒置自動登出');
+      else if (typeof writeToIndexedDB === 'function') await writeToIndexedDB(db);
+      originalToast('閒置 30 分鐘，已完成內部備份，準備自動登出');
+      await speakPromise('已閒置 30 分鐘，資料已備份完成，系統即將自動登出。', 'backup');
       await new Promise(resolve => setTimeout(resolve, 180));
       await playLogoutSound();
       logout(true, true);
@@ -432,9 +432,17 @@
     });
   }
 
-  function speakPromise(text) {
+  function speakPromise(text, kind = 'success', force = false) {
     return new Promise(resolve => {
-      if (!text || !('speechSynthesis' in window)) return resolve(false);
+      if (!text || !('speechSynthesis' in window) || (!force && !voiceAllowed(kind))) return resolve(false);
+      let finished = false;
+      let timer = null;
+      const finish = result => {
+        if (finished) return;
+        finished = true;
+        if (timer) clearTimeout(timer);
+        resolve(result);
+      };
       try {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'zh-TW';
@@ -442,11 +450,13 @@
         utterance.volume = voiceSettings().volume;
         const voice = getChineseVoice();
         if (voice) utterance.voice = voice;
-        utterance.onend = () => resolve(true);
-        utterance.onerror = () => resolve(false);
+        utterance.onend = () => finish(true);
+        utterance.onerror = () => finish(false);
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
-      } catch { resolve(false); }
+        // iPhone 偶爾不回報 onend，不能讓登出流程永久停住。
+        timer = setTimeout(() => { try { window.speechSynthesis.cancel(); } catch {} finish(false); }, 10000);
+      } catch { finish(false); }
     });
   }
 
@@ -509,7 +519,7 @@
       const overlay = document.createElement('div');
       overlay.id = 'logoutChoiceOverlay';
       overlay.className = 'logout-choice-overlay';
-      overlay.innerHTML = `<div class="logout-choice-panel"><h3>登出前必須備份</h3><p class="hint">為保護付款資料，登出前必須先下載完整備份。備份失敗時系統會留在目前帳號，不會登出。</p><button data-choice="backup" class="primary full">📦 完整備份後登出</button><button data-choice="cancel" class="secondary full">取消</button></div>`;
+      overlay.innerHTML = `<div class="logout-choice-panel"><h3>登出前必須備份</h3><p class="hint">系統會先將完整付款資料、照片與簽名自動保存到手機內部資料庫，備份完成後才會登出。登出時不會自動開啟下載預覽頁。</p><button data-choice="backup" class="primary full">📦 完整備份後登出</button><button data-choice="cancel" class="secondary full">取消</button></div>`;
       document.body.appendChild(overlay);
       overlay.querySelectorAll('[data-choice]').forEach(btn => btn.onclick = () => { const value=btn.dataset.choice; overlay.remove(); resolve(value); });
       overlay.onclick = event => { if (event.target === overlay) { overlay.remove(); resolve('cancel'); } };
@@ -850,9 +860,10 @@
       if (choice === 'backup') {
         try {
           if (currentUser) saveAudit('登出');
-          if (typeof downloadBackup === 'function') downloadBackup(false);
-          originalToast('完整備份已完成，準備登出');
-          await speakPromise('資料已備份完成。');
+          if (typeof window.shuangfaInternalBackup === 'function') await window.shuangfaInternalBackup('登出前完整備份');
+          else if (typeof writeToIndexedDB === 'function') await writeToIndexedDB(db);
+          originalToast('完整內部備份已完成，準備登出');
+          await speakPromise('資料已備份完成。', 'backup');
           await new Promise(resolve => setTimeout(resolve, 180));
         } catch (error) {
           console.error('登出備份失敗', error);
@@ -938,7 +949,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 DEV Build 0267\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0277\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1018,7 +1029,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 DEV Build 0267<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0277<br><small>照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
