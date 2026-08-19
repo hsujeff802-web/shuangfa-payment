@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0290
+/* 雙發付款管理系統 V8.3 RC Build 0291
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -1001,7 +1001,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0290\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0291\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1080,7 +1080,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0290<br><small>登入帳號與密碼可在登入後修改，照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0291<br><small>新增收款入口資訊卡美化，登入帳號與密碼可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
