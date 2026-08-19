@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0284
+/* 雙發付款管理系統 V8.3 RC Build 0286
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -81,7 +81,17 @@
       detail
     });
     db.auditLogs = db.auditLogs.slice(0, 2000);
-    try { save(); } catch (error) { console.warn('操作紀錄儲存失敗', error); }
+    try {
+      const pending = save();
+      // IndexedDB 是非同步保存；先掛上錯誤處理，避免未等待的紀錄造成未處理 Promise。
+      if (pending && typeof pending.catch === 'function') {
+        pending.catch(error => console.warn('操作紀錄儲存失敗', error));
+      }
+      return pending;
+    } catch (error) {
+      console.warn('操作紀錄儲存失敗', error);
+      return false;
+    }
   }
 
   function voiceSettings() {
@@ -749,7 +759,7 @@
     editingPaymentId = '';
   }
 
-  function saveCorrection() {
+  async function saveCorrection() {
     const payment = db.payments.find(x => x.id === editingPaymentId);
     if (!payment) return toast('找不到付款資料');
 
@@ -775,9 +785,22 @@
       createdAt: now()
     };
 
+    const previousCorrections = Array.isArray(db.correctionLogs) ? [...db.correctionLogs] : [];
+    const previousAuditLogs = Array.isArray(db.auditLogs) ? [...db.auditLogs] : [];
     db.correctionLogs = Array.isArray(db.correctionLogs) ? db.correctionLogs : [];
     db.correctionLogs.unshift(correction);
-    saveAudit('新增修改紀錄', correction);
+    try {
+      const auditSave = saveAudit('新增修改紀錄', correction);
+      if (auditSave && typeof auditSave.then === 'function') await auditSave;
+      if (auditSave === false) throw new Error('操作紀錄保存失敗');
+    } catch (error) {
+      db.correctionLogs = previousCorrections;
+      db.auditLogs = previousAuditLogs;
+      console.error('新增修改紀錄保存失敗', error);
+      renderCorrections();
+      renderDetailCorrections(payment.id);
+      return toast('修改紀錄保存失敗，原始付款資料沒有變動');
+    }
     closeCorrectionModal();
     renderCorrections();
     renderDetailCorrections(payment.id);
@@ -814,15 +837,24 @@
 
     if (!confirm(`確定要移除此筆修改紀錄嗎？\n\n${correction.serial}｜${correction.vendorCode} ${correction.vendor}\n${correction.fieldLabel}：${correction.oldValue} → ${correction.newValue}`)) return;
 
-    db.correctionLogs = (db.correctionLogs || []).filter(x => x.id !== id);
-    saveAudit('移除修改紀錄', {
+    const previousCorrections = [...(db.correctionLogs || [])];
+    const previousAuditLogs = [...(db.auditLogs || [])];
+    db.correctionLogs = previousCorrections.filter(x => x.id !== id);
+    const auditSave = saveAudit('移除修改紀錄', {
       correctionId: correction.id,
       serial: correction.serial,
       vendorCode: correction.vendorCode,
       vendor: correction.vendor,
       fieldLabel: correction.fieldLabel
     });
-    try { save(); } catch (error) {
+    try {
+      if (auditSave && typeof auditSave.then === 'function') await auditSave;
+      if (auditSave === false) throw new Error('操作紀錄保存失敗');
+    } catch (error) {
+      db.correctionLogs = previousCorrections;
+      db.auditLogs = previousAuditLogs;
+      renderCorrections();
+      if (currentDetailId) renderDetailCorrections(currentDetailId);
       console.error('移除修改紀錄失敗', error);
       return toast('移除失敗，請稍後再試');
     }
@@ -958,7 +990,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0284\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0286\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -977,7 +1009,6 @@
           clearInterval(checkSaved);
           const payment = db.payments[0];
           saveAudit('新增付款', { serial: payment?.serial || '' });
-          speak('付款資料已儲存完成。', 'success');
         } else if (attempts >= 20) {
           clearInterval(checkSaved);
         }
@@ -1038,7 +1069,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0284<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0286<br><small>照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
