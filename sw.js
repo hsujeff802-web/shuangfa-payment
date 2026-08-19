@@ -1,9 +1,9 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0261-indexeddb-storage-fix';
+const CACHE_NAME='shuangfa-payment-v8.3-build0262-backup-voice-fix';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83261',
-  './app.js?v=83261','./v83.js?v=83261',
+  './styles.css?v=83262',
+  './app.js?v=83262','./v83.js?v=83262',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
