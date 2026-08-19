@@ -1,9 +1,9 @@
-const CACHE_NAME='shuangfa-payment-v8.3-buildrc0291-home-entry-card';
+const CACHE_NAME='shuangfa-payment-v8.3-buildrc0292-green-plus';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83291',
-  './app.js?v=83291','./v83.js?v=83291',
+  './styles.css?v=83292',
+  './app.js?v=83292','./v83.js?v=83292',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
