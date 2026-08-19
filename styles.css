@@ -174,6 +174,9 @@ main{width:min(100%,820px);margin:0 auto;padding:18px 14px calc(42px + env(safe-
 .home-card.primary::before{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.16)}
 .home-card.primary span{color:rgba(255,255,255,.78)}
 .home-card.primary.add-payment-card{min-height:188px;justify-content:center;padding-top:24px;padding-bottom:21px}
+.home-card.primary.add-payment-card::after{content:"→";position:absolute;right:-18px;bottom:-42px;width:150px;height:150px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.1);color:rgba(255,255,255,.35);font-size:82px;font-weight:300}
+.home-card.primary.add-payment-card>*{position:relative;z-index:1}
+.home-card-badge{position:absolute;right:16px;top:14px;padding:4px 9px;border:1px solid rgba(255,255,255,.25);border-radius:999px;background:rgba(255,255,255,.14);color:#fff;font-size:10px;font-weight:850;z-index:2}
 .home-card.primary.add-payment-card b{font-size:clamp(23px,6vw,31px);letter-spacing:.02em}
 .home-card.primary.add-payment-card span{font-size:15px}
 .home-card-flow{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:10px;padding:6px 9px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.12);color:rgba(255,255,255,.95);font-size:11px;font-weight:800;line-height:1.2}

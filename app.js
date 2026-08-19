@@ -709,7 +709,7 @@ let swRegistration=null;
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
     try{
-      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83290',{scope:'./',updateViaCache:'none'});
+      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83291',{scope:'./',updateViaCache:'none'});
       updateOfflineStatus();
     }catch(err){
       console.error('離線功能安裝失敗',err);
