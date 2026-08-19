@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0291
+/* 雙發付款管理系統 V8.3 RC Build 0293
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -17,6 +17,7 @@
   let pendingVoice = [];
   let audioContext = null;
   let editingPaymentId = '';
+  let settingsAccessGranted = false;
 
   const q = selector => document.querySelector(selector);
   const qa = selector => [...document.querySelectorAll(selector)];
@@ -68,6 +69,25 @@
       writeAuth(auth);
     }
     return auth;
+  }
+
+  async function verifySettingsPassword() {
+    if (!currentUser) return false;
+    const password = window.prompt('進入系統設定需要輸入目前登入密碼：');
+    if (password === null) return false;
+    if (!password) {
+      toast('請輸入目前登入密碼');
+      return false;
+    }
+    const auth = await ensureAuth();
+    const code = String(currentUser.code || '').trim().toLowerCase();
+    const user = auth.users.find(x => x.enabled !== false && String(x.code || '').trim().toLowerCase() === code);
+    if (!user || user.passwordHash !== await hash(password)) {
+      toast('目前登入密碼不正確，無法進入系統設定');
+      speak('目前登入密碼不正確，無法進入系統設定。', 'error', true);
+      return false;
+    }
+    return true;
   }
 
   function saveAudit(action, detail = {}) {
@@ -608,6 +628,7 @@
     localStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     currentUser = null;
+    settingsAccessGranted = false;
     clearTimeout(idleTimer);
     renderUser();
     q('#loginPassword').value = '';
@@ -905,6 +926,19 @@
     q('#logoutBtn').onclick = backupAndLogout;
     const homeLogoutBtn = q('#homeLogoutBtn');
     if (homeLogoutBtn) homeLogoutBtn.onclick = backupAndLogout;
+    const settingsButton = q('.home-card[data-go="settings"]');
+    if (settingsButton) settingsButton.onclick = async () => {
+      if (settingsButton.dataset.checking === '1') return;
+      settingsButton.dataset.checking = '1';
+      try {
+        if (await verifySettingsPassword()) {
+          settingsAccessGranted = true;
+          show('settings');
+        }
+      } finally {
+        delete settingsButton.dataset.checking;
+      }
+    };
 
     ['voiceEnabled', 'voiceErrors', 'voiceSuccess', 'voiceBackup', 'voiceDue'].forEach(id => q(`#${id}`).addEventListener('change', saveVoiceSettings));
     ['voiceVolume', 'voiceRate'].forEach(id => q(`#${id}`).addEventListener('input', saveVoiceSettings));
@@ -1001,7 +1035,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0291\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0293\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1059,6 +1093,11 @@
 
   const originalShow = show;
   show = function(id, push = true) {
+    if (id === 'settings' && !settingsAccessGranted) {
+      originalToast('進入系統設定需要輸入目前登入密碼');
+      return false;
+    }
+    if (id === 'settings') settingsAccessGranted = false;
     originalShow(id, push);
     if (id === 'settings') {
       syncLoginBrand();
@@ -1080,7 +1119,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0291<br><small>新增收款入口資訊卡美化，登入帳號與密碼可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0293<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
