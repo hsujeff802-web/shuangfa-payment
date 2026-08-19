@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 DEV Build 0264
+/* 雙發付款管理系統 V8.3 DEV Build 0267
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -295,13 +295,29 @@
     document.body.classList.remove('login-locked');
   }
 
+  async function idleBackupAndLogout() {
+    if (!currentUser) return;
+    try {
+      if (typeof saveAudit === 'function') saveAudit('閒置自動登出');
+      if (typeof writeToIndexedDB === 'function') await writeToIndexedDB(db);
+      if (typeof downloadBackup === 'function') downloadBackup(false);
+      originalToast('閒置 30 分鐘，已完成備份，準備自動登出');
+      await speakPromise('已閒置 30 分鐘，資料已備份完成，系統即將自動登出。');
+      await new Promise(resolve => setTimeout(resolve, 180));
+      await playLogoutSound();
+      logout(true, true);
+    } catch (error) {
+      console.error('閒置自動備份失敗', error);
+      originalToast('自動備份失敗，系統暫不登出，請手動備份');
+      speak('自動備份失敗，系統暫不登出。', 'error', true);
+      resetIdleTimer();
+    }
+  }
+
   function resetIdleTimer() {
     clearTimeout(idleTimer);
     if (!currentUser) return;
-    idleTimer = setTimeout(() => {
-      logout(true);
-      originalToast('已閒置 30 分鐘，系統已自動登出');
-    }, IDLE_MS);
+    idleTimer = setTimeout(idleBackupAndLogout, IDLE_MS);
   }
 
   function renderUser() {
@@ -493,7 +509,7 @@
       const overlay = document.createElement('div');
       overlay.id = 'logoutChoiceOverlay';
       overlay.className = 'logout-choice-overlay';
-      overlay.innerHTML = `<div class="logout-choice-panel"><h3>確定要登出？</h3><p class="hint">請選擇是否先下載完整備份。</p><button data-choice="backup" class="primary full">📦 備份後登出</button><button data-choice="direct" class="secondary full">🚪 不儲存直接登出</button><button data-choice="cancel" class="secondary full">取消</button></div>`;
+      overlay.innerHTML = `<div class="logout-choice-panel"><h3>登出前必須備份</h3><p class="hint">為保護付款資料，登出前必須先下載完整備份。備份失敗時系統會留在目前帳號，不會登出。</p><button data-choice="backup" class="primary full">📦 完整備份後登出</button><button data-choice="cancel" class="secondary full">取消</button></div>`;
       document.body.appendChild(overlay);
       overlay.querySelectorAll('[data-choice]').forEach(btn => btn.onclick = () => { const value=btn.dataset.choice; overlay.remove(); resolve(value); });
       overlay.onclick = event => { if (event.target === overlay) { overlay.remove(); resolve('cancel'); } };
@@ -829,7 +845,7 @@
     const backupAndLogout = async () => {
       const choice = await showLogoutChoice();
       if (choice === 'cancel') return;
-      if (choice === 'direct' && !confirm('確定不備份就直接登出？\n\n這次不會下載備份檔。')) return;
+      if (choice !== 'backup') return;
       if (typeof window.shuangfaStopSignatureVoice === 'function') window.shuangfaStopSignatureVoice();
       if (choice === 'backup') {
         try {
@@ -844,8 +860,6 @@
           speak('備份失敗，系統尚未登出。', 'error', true);
           return;
         }
-      } else if (currentUser) {
-        saveAudit('不備份直接登出');
       }
       await playLogoutSound();
       logout(false, true);
@@ -924,7 +938,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 DEV Build 0264\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 DEV Build 0267\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1004,7 +1018,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 DEV Build 0264<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 DEV Build 0267<br><small>照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
