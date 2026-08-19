@@ -1,10 +1,10 @@
-/* 雙發付款管理系統 V8.3 RC Build 0277
+/* 雙發付款管理系統 V8.3 RC Build 0278
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
 
-  const AUTH_KEY = 'shuangfa_v83_auth';
-  const SESSION_KEY = 'shuangfa_v83_session';
+  const AUTH_KEY = 'shuangfa_v83_auth_rc';
+  const SESSION_KEY = 'shuangfa_v83_session_rc';
   const DEFAULT_CODE = 'admin';
   const DEFAULT_PASSWORD = '1234';
   const IDLE_MS = 30 * 60 * 1000;
@@ -949,7 +949,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0277\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0278\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1029,7 +1029,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0277<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0278<br><small>照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
