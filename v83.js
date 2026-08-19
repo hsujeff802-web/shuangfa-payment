@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0286
+/* 雙發付款管理系統 V8.3 RC Build 0287
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -209,7 +209,6 @@
           </div>
           <label class="remember-row"><input id="rememberLogin" type="checkbox" checked> 記住登入</label>
           <button id="loginSubmit" class="primary full">登入</button>
-          <button id="forgotPassword" class="secondary full">忘記密碼／恢復初始密碼</button>
           <div id="loginMessage" class="login-message"></div>
         </div>
       </div>
@@ -395,29 +394,6 @@
     saveAudit('登入');
     playLoginWelcome();
     queueStartupAnnouncements();
-  }
-
-  async function resetPasswordFromLogin() {
-    const code = (q('#loginCode')?.value || DEFAULT_CODE).trim() || DEFAULT_CODE;
-    const auth = await ensureAuth();
-    const user = auth.users.find(x => x.enabled !== false && String(x.code || '').toLowerCase() === code.toLowerCase());
-    if (!user) {
-      q('#loginMessage').textContent = `找不到登入代碼「${code}」`;
-      speak('找不到這個登入代碼。', 'error', true);
-      return;
-    }
-    const phrase = prompt(`將「${user.name || code}」的密碼恢復成初始密碼 1234。\n\n付款資料、照片、簽名都會保留。\n\n請輸入「重設」確認：`, '');
-    if (phrase !== '重設') {
-      q('#loginMessage').textContent = '已取消密碼復原';
-      return;
-    }
-    user.passwordHash = await hash(DEFAULT_PASSWORD);
-    user.mustChangePassword = true;
-    user.passwordChangedAt = now();
-    writeAuth(auth);
-    q('#loginPassword').value = '';
-    q('#loginMessage').textContent = '密碼已恢復為 1234，請重新登入';
-    speak('密碼已恢復，請使用初始密碼登入。', 'success', true);
   }
 
   function audioSettings() {
@@ -890,7 +866,6 @@
 
   function installEvents() {
     q('#loginSubmit').onclick = login;
-    q('#forgotPassword').onclick = resetPasswordFromLogin;
     q('#loginCode').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); q('#loginPassword').focus(); } });
     q('#loginPassword').addEventListener('keydown', event => { if (event.key === 'Enter') login(); });
     const backupAndLogout = async () => {
@@ -990,7 +965,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0286\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0287\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1069,7 +1044,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0286<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0287<br><small>照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
