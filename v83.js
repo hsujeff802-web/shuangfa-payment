@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0278
+/* 雙發付款管理系統 V8.3 RC Build 0280
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -43,6 +43,15 @@
 
   async function ensureAuth() {
     let auth = readAuth();
+    if (!auth?.users?.length) {
+      try {
+        const old = JSON.parse(localStorage.getItem('shuangfa_v83_auth') || 'null');
+        if (old?.users?.length) {
+          auth = old;
+          writeAuth(auth);
+        }
+      } catch (error) { console.warn('RC 登入設定移轉略過', error); }
+    }
     if (!auth?.users?.length) {
       auth = {
         version: 1,
@@ -949,7 +958,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0278\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0280\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1029,7 +1038,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0278<br><small>照片與簽名存檔後會重新驗證</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0280<br><small>照片與簽名存檔後會重新驗證</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;

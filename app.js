@@ -115,7 +115,7 @@ function migrate(input){
   });
   return n;
 }
-function loadSettings(){const base={autoBackup:true,systemName:'雙發付款管理系統',homeLabels:{payment:'新增付款',settlement:'查詢付款資料',reminder:'支票管理',report:'報表中心'}};try{const x=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');return {...base,...x,homeLabels:{...base.homeLabels,...(x.homeLabels||{})}}}catch{return base}}
+function loadSettings(){const base={autoBackup:true,systemName:'雙發付款管理系統',homeLabels:{payment:'新增付款',settlement:'查詢付款資料',reminder:'支票管理',report:'報表中心'}};try{let current=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'null');if(!current||typeof current!=='object')current={};const migrationMark='shuangfa_payment_v52_rc_settings_migrated';if(!localStorage.getItem(migrationMark)){try{const old=JSON.parse(localStorage.getItem('shuangfa_payment_v52_settings')||'null');const carry=['systemName','homeLabels','autoBackup','voiceEnabled','voiceErrors','voiceSuccess','voiceBackup','voiceDue','voiceVolume','voiceRate','loginEnabled','loginMode','loginMusicData','loginMusicName','loginText','logoutEnabled','logoutMode','logoutMusicData','logoutMusicName','logoutText','logoutPlayMode'];if(old&&typeof old==='object')carry.forEach(key=>{if(current[key]===undefined&&old[key]!==undefined)current[key]=old[key]});localStorage.setItem(migrationMark,'1')}catch(error){console.warn('RC 語音設定移轉略過',error)}}return {...base,...current,homeLabels:{...base.homeLabels,...(current.homeLabels||{})}}}catch{return base}}
 function save(){
   db.updatedAt=new Date().toISOString();
   if(storageMode==='indexeddb'){const pending=writeToIndexedDB(db);pending.catch(error=>console.error('IndexedDB 儲存失敗',error));return pending}
@@ -143,7 +143,7 @@ function save(){
 }
 function saveSettings(){localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings))}
 function getSystemName(){return String(settings.systemName||'雙發付款管理系統').trim()||'雙發付款管理系統'}
-function applySystemName(){const name=getSystemName();const h=$('#systemNameHeader');if(h)h.textContent=name;document.title=`${name} V8.3 RC Build 0278・簽名照片保存檢修版`;const loginTitle=document.querySelector('#loginSystemName');if(loginTitle)loginTitle.textContent=name;const apple=document.querySelector('meta[name="apple-mobile-web-app-title"]');if(apple)apple.setAttribute('content',name.slice(0,12))}
+function applySystemName(){const name=getSystemName();const h=$('#systemNameHeader');if(h)h.textContent=name;document.title=`${name} V8.3 RC Build 0280・簽名照片保存檢修版`;const loginTitle=document.querySelector('#loginSystemName');if(loginTitle)loginTitle.textContent=name;const apple=document.querySelector('meta[name="apple-mobile-web-app-title"]');if(apple)apple.setAttribute('content',name.slice(0,12))}
 function applyHomeLabels(){const d={payment:'新增付款',settlement:'查詢付款資料',reminder:'支票管理',report:'報表中心'},x={...d,...(settings.homeLabels||{})};$$('[data-home-label]').forEach(el=>el.textContent=x[el.dataset.homeLabel]||d[el.dataset.homeLabel]);const hero=$('#homeHeroTitle');if(hero)hero.textContent=[x.payment,x.settlement,x.reminder,x.report].join('、')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function formatCheckNo(v){const raw=String(v||'').trim().toUpperCase().replace(/[－–—]/g,'-').replace(/\s+/g,'');const m=raw.match(/^([A-Z]+)-?(\d+)$/);return m?`${m[1]}-${m[2]}`:raw}
@@ -603,7 +603,7 @@ $('#saveHomeLabels').onclick=()=>{settings.homeLabels={payment:$('#homeLabelPaym
 $('#addBank').onclick=()=>{const v=$('#newBank').value.trim();if(!v)return;if(!db.banks.includes(v))db.banks.push(v);db.checks[v]??=[];$('#newBank').value='';save();renderSettings()};$('#addMethod').onclick=()=>{const v=$('#newMethod').value.trim();if(v&&!db.methods.includes(v))db.methods.push(v);$('#newMethod').value='';save();renderSettings()};
 $('#autoBackupToggle').onchange=e=>{settings.autoBackup=e.target.checked;saveSettings();renderBackupStatus()};function renderBackupStatus(){const snaps=JSON.parse(localStorage.getItem(BACKUP_KEY)||'[]'),last=localStorage.getItem('shuangfa_last_backup');$('#backupStatus').innerHTML=`自動備份：<b>${settings.autoBackup?'開啟':'關閉'}</b><br>手機內備份：${snaps.length} 份<br>最近完整備份：${last?new Date(last).toLocaleString('zh-TW'):'尚未備份'}`}
 function backupFileName(){const d=new Date(),z=n=>String(n).padStart(2,'0');return `雙發付款完整備份_${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}.json`}
-function downloadBackup(msg=true){const payload={app:getSystemName(),version:'V8.3 RC Build 0278・簽名照片保存檢修版',backupAt:new Date().toISOString(),data:db,settings},blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=backupFileName();a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);localStorage.setItem('shuangfa_last_backup',new Date().toISOString());renderBackupStatus();renderStorageStatus();if(msg){toast('完整備份檔已產生');if(window.shuangfaSpeak)window.shuangfaSpeak('資料已備份完成。','backup',true)}}
+function downloadBackup(msg=true){const payload={app:getSystemName(),version:'V8.3 RC Build 0280・簽名照片保存檢修版',backupAt:new Date().toISOString(),data:db,settings},blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=backupFileName();a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);localStorage.setItem('shuangfa_last_backup',new Date().toISOString());renderBackupStatus();renderStorageStatus();if(msg){toast('完整備份檔已產生');if(window.shuangfaSpeak)window.shuangfaSpeak('資料已備份完成。','backup',true)}}
 $('#exportBtn').onclick=()=>downloadBackup(true);$('#compressPhotosBtn')?.addEventListener('click',compressAllPhotosSafely);$('#importInput').onchange=async e=>{try{const file=e.target.files?.[0];if(!file)return;const raw=JSON.parse(await file.text()),x=raw.data||raw;if(!x||!Array.isArray(x.payments)||!Array.isArray(x.vendors))throw 0;db=migrate(x);if(raw.settings&&typeof raw.settings==='object'){const base=loadSettings();settings={...base,...raw.settings,homeLabels:{...base.homeLabels,...(raw.settings.homeLabels||{})}}}save();saveSettings();renderLists();renderSettings();renderDue();toast('完整備份已還原')}catch(error){console.error('備份匯入失敗',error);toast('備份檔格式不正確或儲存空間不足')}};
 function createOpeningBackup(){try{if(!settings.autoBackup)return;const day=localDate(),tag='open-'+day,a=JSON.parse(localStorage.getItem(BACKUP_KEY)||'[]');if(a.some(x=>x.tag===tag))return;const slim=structuredClone(db);slim.payments=(slim.payments||[]).map(x=>({...x,invoicePhotos:[],checkPhoto:'',signatureData:''}));a.unshift({at:new Date().toISOString(),tag,reason:'開啟系統自動備份',data:slim});localStorage.setItem(BACKUP_KEY,JSON.stringify(a.slice(0,7)));localStorage.setItem('shuangfa_last_auto_backup',new Date().toISOString())}catch(e){console.error('開啟自動備份失敗',e)}}
 function renderDue(){const t=new Date();t.setHours(0,0,0,0);const tm=new Date(t);tm.setDate(t.getDate()+1);const isDue=entry=>{const d=new Date(`${entry.date}T00:00:00`);return d.getTime()===t.getTime()||d.getTime()===tm.getTime()||d<t};const a=db.payments.filter(p=>(p.status||statusFor(p))!=='已銷帳'&&(p.status||statusFor(p))!=='作廢').filter(p=>dueEntries(p).some(isDue));$('#dueNotice').classList.toggle('hidden',!a.length);if(a.length)$('#dueNotice').innerHTML='<b>🔔 付款提醒</b><br>'+a.map(p=>`${esc(p.serial||'')}｜${esc(p.vendor||'')}｜${esc(voucher(p))}｜$${money(p.amountPaid)}｜${esc(p.status||statusFor(p))}`).join('<br>')}
@@ -706,7 +706,7 @@ let swRegistration=null;
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
     try{
-      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83278',{scope:'./',updateViaCache:'none'});
+      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83280',{scope:'./',updateViaCache:'none'});
       updateOfflineStatus();
     }catch(err){
       console.error('離線功能安裝失敗',err);
@@ -795,7 +795,7 @@ show=function(id,push=true){_showBuild014(id,push);if(id==='todayMail')renderTod
 // 登出與閒置登出使用的內部完整備份：不開啟下載預覽頁，直接保存到本機 IndexedDB。
 window.shuangfaInternalBackup=async function(reason='系統自動備份'){
   const backupAt=new Date().toISOString();
-  const payload={app:getSystemName(),version:'V8.3 RC Build 0278・內部自動備份版',backupAt,reason,data:structuredClone(db),settings:structuredClone(settings)};
+  const payload={app:getSystemName(),version:'V8.3 RC Build 0280・內部自動備份版',backupAt,reason,data:structuredClone(db),settings:structuredClone(settings)};
   if(typeof writeToIndexedDB==='function'){
     await writeToIndexedDB(payload,IDB_BACKUP_KEY);
     if(typeof readFromIndexedDB==='function'){
