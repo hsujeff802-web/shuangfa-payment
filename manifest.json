@@ -1,9 +1,14 @@
 {
-  "name": "雙發廠商付款簽收系統",
+  "name": "雙發付款管理系統 V8.3 DEV Build 025.9・簽名照片保存檢修版",
   "short_name": "雙發付款",
-  "start_url": "./?v=4",
+  "start_url": "./index.html?v=83259",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f4f7f8",
-  "theme_color": "#0f4c5c",
-  "lang": "zh-Hant"
+  "background_color": "#f1f9fa",
+  "theme_color": "#159aa3",
+  "lang": "zh-Hant-TW",
+  "icons": [
+    {"src":"icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"icon-512.png","sizes":"512x512","type":"image/png"}
+  ]
 }
