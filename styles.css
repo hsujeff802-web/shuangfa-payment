@@ -502,7 +502,15 @@ body.login-locked>.topbar,body.login-locked>main,body.login-locked>#photoViewer{
 #signature>.step{margin-bottom:7px;padding-top:7px;padding-bottom:7px}
 #signature>.hint{margin:5px 2px 7px;font-size:13px;line-height:1.35}
 #signature>.two{margin-top:8px}
+#signature .canvas-wrap{height:30vh;min-height:215px;max-height:285px}
+#signature .signature-payment-card{padding:7px 10px;margin-bottom:5px}
+#signature .signature-vendor{font-size:16px}
+#signature .signature-method{font-size:14px;margin-bottom:2px}
+#signature .signature-amount-label{font-size:12px}
+#signature .signature-warning{padding:5px 7px;font-size:12px}
+#signature .two button{min-height:46px;padding-top:8px;padding-bottom:8px}
 @media(max-height:760px){.canvas-wrap{height:48vh;min-height:300px}.signature-payment-card{padding:7px 10px}.signature-amount{font-size:clamp(27px,7vw,39px)}}
+@media(max-height:760px){#signature .canvas-wrap{height:27vh;min-height:185px;max-height:235px}}
 
 
 /* Build 025.3：收款月份可多選／區間 */
