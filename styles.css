@@ -157,8 +157,9 @@ main{width:min(100%,820px);margin:0 auto;padding:18px 14px calc(42px + env(safe-
 .home-card[data-go="checks"]::before{content:"票";font-size:17px}
 .home-card[data-go="report"]::before{content:"表";font-size:17px}
 .home-card[data-go="vendors"]::before{content:"商";font-size:17px}
+.home-card[data-go="todayMail"]::before{content:"寄";font-size:17px}
 .home-card[data-go="settings"]::before{content:"⚙";font-size:20px}
-.home-card b{font-size:19px;line-height:1.25;letter-spacing:-.01em}
+.home-card b{font-size:19px;line-height:1.25;letter-spacing:-.01em;overflow-wrap:anywhere}
 .home-card span{color:var(--muted);font-size:13px;font-weight:600;line-height:1.35}
 .home-card.primary{
   grid-column:1/-1;
@@ -380,7 +381,13 @@ button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 @media(max-width:520px){
   .topbar{min-height:84px;padding-left:12px;padding-right:12px}
   .topbar h1{font-size:19px}
-  main{padding-left:12px;padding-right:12px}
+  main{padding:14px 12px calc(34px + env(safe-area-inset-bottom))}
+  .page>h2{font-size:25px;margin-bottom:13px}
+  .step{margin-bottom:14px;padding:13px 14px;font-size:20px}
+  .card,.upload-card,.summary{padding:15px;margin-bottom:12px}
+  label{margin:10px 0;gap:6px;font-size:14px}
+  input,select,textarea{min-height:49px;padding:11px 12px;font-size:16px}
+  button,.file-label{min-height:49px;padding:12px 14px}
   .home-grid{grid-template-columns:1fr 1fr;gap:10px}
   .home-card{min-height:137px;padding:16px}
   .home-card::before{left:15px;top:14px;width:40px;height:40px}
