@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0311
+/* 雙發付款管理系統 V8.3 Build 0312
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -28,6 +28,10 @@
   const LICENSE_IDB_KEY = 'shuangfa_v83_license_rc';
   const DEVICE_IDB_KEY = 'shuangfa_v83_device_rc';
   const DEVICE_KEY = 'shuangfa_v83_device_rc';
+  const LICENSE_COOKIE = 'shuangfa_v83_license_rc';
+  const DEVICE_COOKIE = 'shuangfa_v83_device_rc';
+  const LICENSE_DB_NAME = 'shuangfa_license_v1_rc';
+  const LICENSE_DB_STORE = 'license';
   const LICENSE_SECRET = 'shuangfa-v83-offline-license-2026';
   let licenseState = null;
   let licenseReady = false;
@@ -39,7 +43,7 @@
   const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 
   // Safari／iPad 可能因私密瀏覽或網站資料限制，讓 localStorage 無法長期保存。
-  // 授權與設備識別碼另外寫入既有 IndexedDB，重新開啟時可自動補回 localStorage。
+  // 授權資料使用獨立 IndexedDB，再以 Cookie 作第二層備援，避免付款資料庫忙碌時連授權也無法讀回。
   function safeLocalGet(key) {
     try { return localStorage.getItem(key); } catch { return null; }
   }
@@ -52,35 +56,193 @@
     try { localStorage.removeItem(key); } catch {}
   }
 
-  async function readLicenseStore(key) {
+  function cloneForStorage(value) {
     try {
-      if (typeof readFromIndexedDB !== 'function') return null;
-      const value = await readFromIndexedDB(key);
-      return value && typeof value === 'object' ? value : null;
-    } catch (error) {
-      console.warn('授權本機資料庫讀取略過', error);
-      return null;
+      if (typeof structuredClone === 'function') return structuredClone(value);
+      return JSON.parse(JSON.stringify(value));
+    } catch { return value; }
+  }
+
+  function safeCookieGet(key) {
+    try {
+      const prefix = `${encodeURIComponent(key)}=`;
+      const item = document.cookie.split('; ').find(part => part.startsWith(prefix));
+      return item ? decodeURIComponent(item.slice(prefix.length)) : null;
+    } catch { return null; }
+  }
+
+  function safeCookieSet(key, value) {
+    try {
+      document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(value)}; Max-Age=315360000; Path=/; SameSite=Lax`;
+      return safeCookieGet(key) === String(value);
+    } catch { return false; }
+  }
+
+  function licenseCookieKey(key) {
+    return key === LICENSE_IDB_KEY ? LICENSE_COOKIE : key === DEVICE_IDB_KEY ? DEVICE_COOKIE : '';
+  }
+
+  function openLicenseDB() {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) return reject(new Error('此瀏覽器不支援 IndexedDB'));
+      const request = indexedDB.open(LICENSE_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains(LICENSE_DB_STORE)) request.result.createObjectStore(LICENSE_DB_STORE);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('授權資料庫開啟失敗'));
+      request.onblocked = () => reject(new Error('授權資料庫目前被其他分頁占用'));
+    });
+  }
+
+  async function readDedicatedLicenseStore(key) {
+    const idb = await openLicenseDB();
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { idb.close(); } catch {}
+        fn(value);
+      };
+      const timer = setTimeout(() => finish(reject, new Error('授權資料庫讀取逾時')), 8000);
+      try {
+        const tx = idb.transaction(LICENSE_DB_STORE, 'readonly');
+        const request = tx.objectStore(LICENSE_DB_STORE).get(key);
+        request.onsuccess = () => finish(resolve, request.result || null);
+        request.onerror = () => finish(reject, request.error || new Error('授權資料庫讀取失敗'));
+        tx.onerror = () => finish(reject, tx.error || new Error('授權資料庫讀取交易失敗'));
+        tx.onabort = () => finish(reject, tx.error || new Error('授權資料庫讀取交易已中止'));
+      } catch (error) { finish(reject, error); }
+    });
+  }
+
+  async function writeDedicatedLicenseStore(value, key) {
+    const idb = await openLicenseDB();
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { idb.close(); } catch {}
+        fn(result);
+      };
+      const timer = setTimeout(() => finish(reject, new Error('授權資料庫寫入逾時')), 8000);
+      try {
+        const tx = idb.transaction(LICENSE_DB_STORE, 'readwrite');
+        tx.oncomplete = () => finish(resolve, true);
+        tx.onerror = () => finish(reject, tx.error || new Error('授權資料庫寫入失敗'));
+        tx.onabort = () => finish(reject, tx.error || new Error('授權資料庫寫入交易已中止'));
+        tx.objectStore(LICENSE_DB_STORE).put(cloneForStorage(value), key);
+      } catch (error) { finish(reject, error); }
+    });
+  }
+
+  async function readLicenseStores(key) {
+    const values = [];
+    const add = value => {
+      if (!value || typeof value !== 'object') return;
+      if (!values.some(item => JSON.stringify(item) === JSON.stringify(value))) values.push(value);
+    };
+    try { add(await readDedicatedLicenseStore(key)); }
+    catch (error) { console.warn('獨立授權資料庫讀取略過', error); }
+    const cookieKey = licenseCookieKey(key);
+    if (cookieKey) {
+      try { add(JSON.parse(safeCookieGet(cookieKey) || 'null')); } catch {}
     }
+    try {
+      if (typeof readFromIndexedDB === 'function') add(await readFromIndexedDB(key));
+    } catch (error) { console.warn('既有授權資料庫讀取略過', error); }
+    return values;
+  }
+
+  async function readLicenseStore(key) {
+    return (await readLicenseStores(key))[0] || null;
   }
 
   async function writeLicenseStore(value, key) {
+    let saved = false;
+    try { await writeDedicatedLicenseStore(value, key); saved = true; }
+    catch (error) { console.warn('獨立授權資料庫寫入略過', error); }
     try {
-      if (typeof writeToIndexedDB !== 'function') return false;
-      await writeToIndexedDB(value, key);
-      return true;
+      if (typeof writeToIndexedDB === 'function') { await writeToIndexedDB(value, key); saved = true; }
+    } catch (error) { console.warn('既有授權資料庫寫入略過', error); }
+    const cookieKey = licenseCookieKey(key);
+    if (cookieKey) saved = safeCookieSet(cookieKey, JSON.stringify(value)) || saved;
+    return saved;
+  }
+
+  function storageContextLabel() {
+    const standalone = navigator.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)')?.matches);
+    return standalone ? '主畫面 App 模式' : 'Safari 瀏覽器模式';
+  }
+
+  async function inspectLicenseStorage() {
+    const local = (() => { try { return JSON.parse(safeLocalGet(LICENSE_KEY) || 'null'); } catch { return null; } })();
+    const stored = await readLicenseStores(LICENSE_IDB_KEY);
+    const cookie = (() => { try { return JSON.parse(safeCookieGet(LICENSE_COOKIE) || 'null'); } catch { return null; } })();
+    const code = licenseState?.code || '';
+    return {
+      context: storageContextLabel(),
+      local: Boolean(local?.code),
+      indexedDB: stored.some(item => Boolean(item?.code)),
+      cookie: Boolean(cookie?.code),
+      matched: Boolean(code && (local?.code === code || cookie?.code === code || stored.some(item => item?.code === code)))
+    };
+  }
+
+  async function renderLicenseStorageStatus() {
+    const elements = [q('#licenseStorageStatus'), q('#licenseStorageStatusSettings')].filter(Boolean);
+    if (!elements.length) return;
+    elements.forEach(element => { element.textContent = '正在檢查授權保存狀態…'; });
+    try {
+      const result = await inspectLicenseStorage();
+      const saved = result.matched;
+      const details = `本機儲存：${result.local ? '正常' : '未讀到'}｜資料庫：${result.indexedDB ? '正常' : '未讀到'}｜備援：${result.cookie ? '正常' : '未讀到'}`;
+      const message = saved
+        ? `✅ 授權已保存（${result.context}）<br><small>${details}</small>`
+        : `⚠️ 目前尚未讀到可恢復的授權（${result.context}）。請勿使用私密瀏覽，也不要切換 Safari 與主畫面 App。<br><small>${details}</small>`;
+      elements.forEach(element => { element.innerHTML = message; });
     } catch (error) {
-      console.warn('授權本機資料庫寫入略過', error);
-      return false;
+      elements.forEach(element => { element.textContent = `⚠️ 授權保存檢測失敗：${error.message || '請確認瀏覽模式'}`; });
     }
+  }
+
+  async function checkLicenseStorage(button) {
+    if (button) { button.disabled = true; button.textContent = '檢查中…'; }
+    try {
+      if (licenseState?.code) await persistLicenseState(licenseState);
+      await renderLicenseStorageStatus();
+      const result = await inspectLicenseStorage();
+      originalToast(result.matched ? `授權已保存（${result.context}）` : '目前沒有讀到可恢復的授權，請確認不是私密瀏覽。');
+    } catch (error) {
+      originalToast(error.message || '授權保存檢查失敗');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = '檢查授權保存'; }
+    }
+  }
+
+  async function requestPersistentStorage() {
+    try {
+      if (navigator.storage?.persist) await navigator.storage.persist();
+    } catch (error) { console.warn('請求持久儲存略過', error); }
   }
 
   async function persistLicenseState(state) {
     const localSaved = safeLocalSet(LICENSE_KEY, JSON.stringify(state));
     const indexedDbSaved = await writeLicenseStore(state, LICENSE_IDB_KEY);
-    if (!localSaved && !indexedDbSaved) {
+    const cookieSaved = safeCookieSet(LICENSE_COOKIE, JSON.stringify(state));
+    const stored = await readLicenseStores(LICENSE_IDB_KEY);
+    const localVerified = (() => { try { return JSON.parse(safeLocalGet(LICENSE_KEY) || 'null')?.code === state.code; } catch { return false; } })();
+    const cookieVerified = (() => { try { return JSON.parse(safeCookieGet(LICENSE_COOKIE) || 'null')?.code === state.code; } catch { return false; } })();
+    const indexedDbVerified = stored.some(item => item?.code === state.code);
+    if ((!localSaved && !indexedDbSaved && !cookieSaved) || (!localVerified && !cookieVerified && !indexedDbVerified)) {
       throw new Error('此瀏覽器目前禁止保存授權資料，請關閉私密瀏覽後重新開啟。');
     }
-    return { localSaved, indexedDbSaved };
+    await requestPersistentStorage();
+    return { localSaved, indexedDbSaved, cookieSaved, localVerified, cookieVerified, indexedDbVerified };
   }
 
   async function ensureStableDeviceId() {
@@ -100,6 +262,7 @@
     deviceIdCache = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     safeLocalSet(DEVICE_KEY, deviceIdCache);
     await writeLicenseStore({ id: deviceIdCache }, DEVICE_IDB_KEY);
+    safeCookieSet(DEVICE_COOKIE, JSON.stringify({ id: deviceIdCache }));
     return deviceIdCache;
   }
 
@@ -199,8 +362,10 @@
       const localStored = JSON.parse(safeLocalGet(LICENSE_KEY) || 'null');
       if (localStored) candidates.push(localStored);
     } catch {}
-    const indexedDbStored = await readLicenseStore(LICENSE_IDB_KEY);
-    if (indexedDbStored && JSON.stringify(indexedDbStored) !== JSON.stringify(candidates[0] || null)) candidates.push(indexedDbStored);
+    const storedValues = await readLicenseStores(LICENSE_IDB_KEY);
+    storedValues.forEach(value => {
+      if (!candidates.some(item => JSON.stringify(item) === JSON.stringify(value))) candidates.push(value);
+    });
 
     for (const stored of candidates) {
       if (stored?.legacy && stored.device === getDeviceId()) {
@@ -242,6 +407,7 @@
     const device = q('#licenseDeviceId');
     if (status) status.innerHTML = licenseDescription();
     if (device) device.textContent = getDeviceId();
+    void renderLicenseStorageStatus();
   }
 
   function showLicenseGate(message = '') {
@@ -537,6 +703,8 @@
           <div class="lock-notice"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span><br><small>如需綁定手機／平板，請把此識別碼提供給授權管理者。</small></div>
           <div class="login-input-row"><span class="login-input-icon" aria-hidden="true">🔑</span><input id="licenseCode" autocomplete="off" autocapitalize="characters" placeholder="請貼上公司專用授權碼" aria-label="授權碼"></div>
           <button id="activateLicense" class="primary full">啟用系統授權</button>
+          <div id="licenseStorageStatus" class="backup-status">尚未檢查授權保存狀態。</div>
+          <button id="checkLicenseStorageGate" class="secondary full">檢查授權保存</button>
         </div>
       </div>
       <div id="loginGate" class="login-gate hidden" aria-modal="true" role="dialog">
@@ -589,6 +757,8 @@
         <div id="licenseStatus" class="backup-status"></div>
         <p class="hint">新手機或平板需要公司專用授權碼才能使用。授權資料會保存在本機資料庫，不會上傳付款內容。</p>
         <div class="backup-status"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span></div>
+        <div id="licenseStorageStatusSettings" class="backup-status">尚未檢查授權保存狀態。</div>
+        <button id="checkLicenseStorage" class="secondary full">檢查授權保存</button>
         <button id="copyLicenseDevice" class="secondary full">複製設備識別碼</button>
       </div>`);
 
@@ -1374,6 +1544,8 @@
   function installEvents() {
     q('#activateLicense').onclick = activateLicense;
     q('#licenseCode').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); activateLicense(); } });
+    q('#checkLicenseStorageGate').onclick = event => checkLicenseStorage(event.currentTarget);
+    q('#checkLicenseStorage').onclick = event => checkLicenseStorage(event.currentTarget);
     q('#copyLicenseDevice').onclick = async () => {
       const id = getDeviceId();
       try { await navigator.clipboard.writeText(id); originalToast('設備識別碼已複製'); }
@@ -1549,7 +1721,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0311\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0312\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1637,7 +1809,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0311<br><small>授權資料改用本機資料庫備援保存；進入系統設定需輸入目前登入密碼</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0312<br><small>授權改用獨立資料庫、Cookie 雙重備援；進入系統設定需輸入目前登入密碼</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
