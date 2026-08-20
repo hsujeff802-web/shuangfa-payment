@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0313
+/* 雙發付款管理系統 V8.3 Build 0314
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -32,6 +32,9 @@
   const DEVICE_COOKIE = 'shuangfa_v83_device_rc';
   const LICENSE_DB_NAME = 'shuangfa_license_v1_rc';
   const LICENSE_DB_STORE = 'license';
+  const LICENSE_CACHE_NAME = 'shuangfa-payment-license-v1';
+  const LICENSE_CODE_KEY = 'shuangfa_v83_license_code_rc';
+  const LICENSE_CODE_COOKIE = 'shuangfa_v83_license_code_rc';
   const LICENSE_SECRET = 'shuangfa-v83-offline-license-2026';
   let licenseState = null;
   let licenseReady = false;
@@ -77,6 +80,53 @@
       document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(value)}; Max-Age=315360000; Path=/; SameSite=Lax`;
       return safeCookieGet(key) === String(value);
     } catch { return false; }
+  }
+
+  function licenseCacheRequest(key) {
+    try {
+      const base = new URL('./', window.location.href);
+      return new Request(new URL(`.shuangfa-license/${encodeURIComponent(key)}`, base).href);
+    } catch { return null; }
+  }
+
+  async function readLicenseCache(key) {
+    if (!('caches' in window)) return null;
+    const request = licenseCacheRequest(key);
+    if (!request) return null;
+    try {
+      const cache = await caches.open(LICENSE_CACHE_NAME);
+      const response = await cache.match(request);
+      return response ? await response.json() : null;
+    } catch (error) {
+      console.warn('獨立授權快取讀取略過', error);
+      return null;
+    }
+  }
+
+  async function writeLicenseCache(value, key) {
+    if (!('caches' in window)) return false;
+    const request = licenseCacheRequest(key);
+    if (!request) return false;
+    try {
+      const cache = await caches.open(LICENSE_CACHE_NAME);
+      await cache.put(request, new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } }));
+      return true;
+    } catch (error) {
+      console.warn('獨立授權快取寫入略過', error);
+      return false;
+    }
+  }
+
+  function readRawLicenseCode() {
+    return String(safeLocalGet(LICENSE_CODE_KEY) || safeCookieGet(LICENSE_CODE_COOKIE) || '').trim();
+  }
+
+  function writeRawLicenseCode(code) {
+    const raw = String(code || '').trim();
+    if (!raw) return false;
+    const localSaved = safeLocalSet(LICENSE_CODE_KEY, raw);
+    const cookieSaved = safeCookieSet(LICENSE_CODE_COOKIE, raw);
+    return localSaved || cookieSaved;
   }
 
   function licenseCookieKey(key) {
@@ -149,6 +199,8 @@
     };
     try { add(await readDedicatedLicenseStore(key)); }
     catch (error) { console.warn('獨立授權資料庫讀取略過', error); }
+    try { add(await readLicenseCache(key)); }
+    catch (error) { console.warn('獨立授權快取讀取略過', error); }
     const cookieKey = licenseCookieKey(key);
     if (cookieKey) {
       try { add(JSON.parse(safeCookieGet(cookieKey) || 'null')); } catch {}
@@ -167,6 +219,8 @@
     let saved = false;
     try { await writeDedicatedLicenseStore(value, key); saved = true; }
     catch (error) { console.warn('獨立授權資料庫寫入略過', error); }
+    try { saved = await writeLicenseCache(value, key) || saved; }
+    catch (error) { console.warn('獨立授權快取寫入略過', error); }
     try {
       if (typeof writeToIndexedDB === 'function') { await writeToIndexedDB(value, key); saved = true; }
     } catch (error) { console.warn('既有授權資料庫寫入略過', error); }
@@ -182,18 +236,24 @@
 
   async function inspectLicenseStorage() {
     const local = (() => { try { return JSON.parse(safeLocalGet(LICENSE_KEY) || 'null'); } catch { return null; } })();
-    const stored = await readLicenseStores(LICENSE_IDB_KEY);
     const cookie = (() => { try { return JSON.parse(safeCookieGet(LICENSE_COOKIE) || 'null'); } catch { return null; } })();
+    const rawCode = readRawLicenseCode();
+    const dedicated = await readDedicatedLicenseStore(LICENSE_IDB_KEY).catch(() => null);
+    const legacy = typeof readFromIndexedDB === 'function' ? await readFromIndexedDB(LICENSE_IDB_KEY).catch(() => null) : null;
+    const cache = await readLicenseCache(LICENSE_IDB_KEY);
+    const stored = [local, dedicated, legacy, cache, cookie].filter(value => value && typeof value === 'object');
     const code = licenseState?.code || '';
-    const storedCode = local?.code || cookie?.code || stored.find(item => item?.code)?.code || '';
+    const storedCode = local?.code || rawCode || dedicated?.code || legacy?.code || cache?.code || cookie?.code || '';
     return {
       context: storageContextLabel(),
       local: Boolean(local?.code),
-      indexedDB: stored.some(item => Boolean(item?.code)),
+      indexedDB: Boolean(dedicated?.code || legacy?.code),
+      cache: Boolean(cache?.code),
       cookie: Boolean(cookie?.code),
+      rawCode: Boolean(rawCode),
       hasStored: Boolean(storedCode),
       valid: Boolean(licenseState?.code),
-      matched: Boolean(code && (local?.code === code || cookie?.code === code || stored.some(item => item?.code === code)))
+      matched: Boolean(code && (rawCode === code || stored.some(item => item?.code === code)))
     };
   }
 
@@ -204,7 +264,7 @@
     try {
       const result = await inspectLicenseStorage();
       const saved = result.valid && result.matched;
-      const details = `本機儲存：${result.local ? '正常' : '未讀到'}｜資料庫：${result.indexedDB ? '正常' : '未讀到'}｜備援：${result.cookie ? '正常' : '未讀到'}`;
+      const details = `本機儲存：${result.local ? '正常' : '未讀到'}｜資料庫：${result.indexedDB ? '正常' : '未讀到'}｜快取：${result.cache ? '正常' : '未讀到'}｜Cookie：${result.cookie || result.rawCode ? '正常' : '未讀到'}`;
       const message = saved
         ? `✅ 授權已驗證並保存（${result.context}）<br><small>${details}</small>`
         : result.hasStored
@@ -241,18 +301,22 @@
   }
 
   async function persistLicenseState(state) {
+    await requestPersistentStorage();
     const localSaved = safeLocalSet(LICENSE_KEY, JSON.stringify(state));
     const indexedDbSaved = await writeLicenseStore(state, LICENSE_IDB_KEY);
     const cookieSaved = safeCookieSet(LICENSE_COOKIE, JSON.stringify(state));
+    const rawSaved = writeRawLicenseCode(state.code);
     const stored = await readLicenseStores(LICENSE_IDB_KEY);
+    const cacheStored = await readLicenseCache(LICENSE_IDB_KEY);
     const localVerified = (() => { try { return JSON.parse(safeLocalGet(LICENSE_KEY) || 'null')?.code === state.code; } catch { return false; } })();
     const cookieVerified = (() => { try { return JSON.parse(safeCookieGet(LICENSE_COOKIE) || 'null')?.code === state.code; } catch { return false; } })();
     const indexedDbVerified = stored.some(item => item?.code === state.code);
-    if ((!localSaved && !indexedDbSaved && !cookieSaved) || (!localVerified && !cookieVerified && !indexedDbVerified)) {
+    const rawVerified = readRawLicenseCode() === String(state.code || '');
+    const cacheVerified = cacheStored?.code === state.code;
+    if ((!localSaved && !indexedDbSaved && !cookieSaved && !rawSaved) || (!localVerified && !cookieVerified && !indexedDbVerified && !rawVerified && !cacheVerified)) {
       throw new Error('此瀏覽器目前禁止保存授權資料，請關閉私密瀏覽後重新開啟。');
     }
-    await requestPersistentStorage();
-    return { localSaved, indexedDbSaved, cookieSaved, localVerified, cookieVerified, indexedDbVerified };
+    return { localSaved, indexedDbSaved, cookieSaved, rawSaved, localVerified, cookieVerified, indexedDbVerified, rawVerified, cacheVerified };
   }
 
   async function ensureStableDeviceId() {
@@ -369,6 +433,8 @@
     licenseValidationMessage = '';
     await ensureStableDeviceId();
     const candidates = [];
+    const rawCode = readRawLicenseCode();
+    if (rawCode) candidates.push({ code: rawCode });
     try {
       const localStored = JSON.parse(safeLocalGet(LICENSE_KEY) || 'null');
       if (localStored) candidates.push(localStored);
@@ -1735,7 +1801,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0313\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0314\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1823,7 +1889,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0313<br><small>授權改用獨立資料庫、Cookie 雙重備援；進入系統設定需輸入目前登入密碼</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0314<br><small>授權採獨立資料庫、快取、原始授權碼與 Cookie 多重保存；進入系統設定需輸入目前登入密碼</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;

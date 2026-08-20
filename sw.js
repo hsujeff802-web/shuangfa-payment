@@ -1,9 +1,10 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0313-official';
+const CACHE_NAME='shuangfa-payment-v8.3-build0314-official';
+const LICENSE_CACHE_NAME='shuangfa-payment-license-v1';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83410',
-  './app.js?v=83410','./v83.js?v=83410',
+  './styles.css?v=83411',
+  './app.js?v=83411','./v83.js?v=83411',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
@@ -16,7 +17,7 @@ self.addEventListener('install',event=>{
 
 self.addEventListener('activate',event=>{
   event.waitUntil(
-    caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k))))
+    caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_NAME&&k!==LICENSE_CACHE_NAME).map(k=>caches.delete(k))))
       .then(()=>self.clients.claim())
   );
 });
