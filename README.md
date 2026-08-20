@@ -1,4 +1,16 @@
-# 雙發付款管理系統 V8.3 Build 0316 雲端授權裝置綁定測試版
+# 雙發付款管理系統 V8.3 Build 0321 雲端授權裝置恢復修正版
+
+## V8.3 Build 0321 授權恢復修正
+- 同一台已經在 Supabase 綁定過的手機、平板或電腦，若瀏覽器只遺失本機授權快取，重新開啟時會用裝置識別碼向雲端恢復授權，不會再次要求貼上授權碼。
+- 恢復只回傳公司、方案、期限與裝置狀態；不回傳原始授權碼，也不會上傳付款資料、照片、簽名或備份。
+- 新增 `supabase/license-recovery.sql`；必須在 `license-schema.sql` 成功後再執行一次，否則前端無法使用雲端恢復函式。
+- Service Worker、HTML 載入參數與系統資訊同步更新為 Build 0321，降低手機繼續載入舊版程式的機會。
+
+## Build 0321 上線必要條件
+1. Supabase SQL Editor 先執行 `supabase/license-schema.sql`（已有資料表也可重新執行）。
+2. 再執行 `supabase/license-recovery.sql`。
+3. GitHub Pages 根目錄同步上傳新版 `index.html`、`v83.js`、`sw.js`、`cloud-config.js`、`app.js`、`manifest.json`。
+4. 部署完成後，用一般瀏覽器開啟新版網址；若主畫面 App 仍顯示舊版，先關閉該 App，再用 Safari 開啟一次新版網址後重新加入主畫面。
 
 ## V8.3 Build 0316 雲端授權裝置綁定測試版
 - 第一次使用需連網輸入公司專用授權碼，Supabase 只保存授權與最小設備資料。
