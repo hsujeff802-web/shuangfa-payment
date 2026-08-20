@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0307
+/* 雙發付款管理系統 V8.3 Build 0308
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -377,6 +377,17 @@
         <button id="changePassword" class="primary full">儲存登入帳號／密碼</button>
         <button id="logoutBtn" class="secondary full">登出</button>
       </div>
+      <div class="card" id="userManagementCard">
+        <h3>👥 使用者姓名管理</h3>
+        <p class="hint">只有管理員可以新增或移除使用者。每位使用者使用自己的姓名、登入帳號與密碼；目前登入的管理員不能被移除。</p>
+        <div id="userManagementList" class="user-management-list"></div>
+        <hr>
+        <label>使用姓名<input id="newUserName" maxlength="30" placeholder="例如：王小明"></label>
+        <label>登入帳號<input id="newUserCode" maxlength="30" autocomplete="username" placeholder="例如：staff01"></label>
+        <label>初始密碼<input id="newUserPassword" type="password" minlength="4" autocomplete="new-password" placeholder="至少 4 碼"></label>
+        <label>使用者權限<select id="newUserRole"><option value="staff">一般使用者</option><option value="admin">管理員</option></select></label>
+        <button id="addUser" class="primary full">新增使用者</button>
+      </div>
 `);
   }
 
@@ -472,6 +483,44 @@
     const currentLoginCode = q('#currentLoginCode');
     if (currentLoginCode) currentLoginCode.value = currentUser.code;
     q('#defaultPasswordNotice').classList.toggle('hidden', !currentUser.mustChangePassword);
+  }
+
+  function renderUserManagement() {
+    const list = q('#userManagementList');
+    const card = q('#userManagementCard');
+    if (!list || !card) return;
+    const admin = currentUser?.role === 'admin';
+    card.classList.toggle('hidden', !admin);
+    if (!admin) return;
+    const auth = readAuth() || { users: [] };
+    const safe = value => typeof esc === 'function' ? esc(String(value ?? '')) : String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    list.innerHTML = (auth.users || []).map(user => {
+      const isCurrent = String(user.code).toLowerCase() === String(currentUser.code).toLowerCase();
+      const role = user.role === 'admin' ? '管理員' : '一般使用者';
+      return `<div class="user-management-row"><div><b>${safe(user.name || '未設定姓名')}</b><small>${safe(user.code)}｜${role}${isCurrent ? '｜目前登入' : ''}</small></div><button class="secondary" data-remove-user="${safe(user.code)}" ${isCurrent ? 'disabled title="目前登入者不能移除"' : ''}>移除</button></div>`;
+    }).join('') || '<p class="hint">目前沒有使用者資料。</p>';
+    qa('[data-remove-user]').forEach(button => {
+      button.onclick = () => removeManagedUser(button.dataset.removeUser);
+    });
+  }
+
+  async function removeManagedUser(code) {
+    if (currentUser?.role !== 'admin') return toast('只有管理員可以移除使用者');
+    const auth = await ensureAuth();
+    const same = value => String(value || '').trim().toLowerCase();
+    const user = auth.users.find(x => same(x.code) === same(code));
+    if (!user) return toast('找不到這位使用者');
+    if (same(user.code) === same(currentUser.code)) return toast('目前登入的管理員不能移除');
+    if (user.role === 'admin' && auth.users.filter(x => x.enabled !== false && x.role === 'admin').length <= 1) return toast('系統至少要保留一位管理員');
+    const password = prompt(`移除使用者「${user.name || user.code}」前，請輸入目前管理員密碼：`);
+    if (password === null) return;
+    if (!password || (await hash(password)) !== auth.users.find(x => same(x.code) === same(currentUser.code))?.passwordHash) return toast('管理員密碼不正確，無法移除');
+    if (!confirm(`確定要移除使用者「${user.name || user.code}」嗎？`)) return;
+    auth.users = auth.users.filter(x => same(x.code) !== same(user.code));
+    writeAuth(auth);
+    renderUserManagement();
+    await Promise.resolve(saveAudit('移除使用者', { code: user.code, name: user.name || '' }));
+    originalToast(`使用者「${user.name || user.code}」已移除`);
   }
 
   async function login() {
@@ -1191,9 +1240,31 @@
       speak(`${changedText}已修改完成。`, 'success');
     };
 
+    q('#addUser').onclick = async () => {
+      if (currentUser?.role !== 'admin') return toast('只有管理員可以新增使用者');
+      const name = q('#newUserName').value.trim();
+      const code = q('#newUserCode').value.trim();
+      const password = q('#newUserPassword').value;
+      const role = q('#newUserRole').value === 'admin' ? 'admin' : 'staff';
+      if (!name) return toast('請輸入使用姓名');
+      if (!code || code.length < 3 || code.length > 30 || /\s/.test(code)) return toast('登入帳號需為 3～30 碼，且不能包含空白');
+      if (!password || password.length < 4) return toast('初始密碼至少四碼');
+      const auth = await ensureAuth();
+      const same = value => String(value || '').trim().toLowerCase();
+      if (auth.users.some(x => same(x.code) === same(code))) return toast('這個登入帳號已經存在，請換一個帳號');
+      auth.users.push({ code, name, role, enabled: true, mustChangePassword: true, passwordHash: await hash(password), createdAt: now() });
+      writeAuth(auth);
+      q('#newUserName').value = q('#newUserCode').value = q('#newUserPassword').value = '';
+      q('#newUserRole').value = 'staff';
+      renderUserManagement();
+      await Promise.resolve(saveAudit('新增使用者', { code, name, role }));
+      originalToast(`使用者「${name}」已新增`);
+      speak('使用者已新增完成。', 'success');
+    };
+
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0307\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0308\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1262,6 +1333,7 @@
       applyVoiceSettings();
     applyAudioSettings();
       renderUser();
+      renderUserManagement();
     }
     if (id === 'revisions') renderCorrections();
   };
@@ -1278,7 +1350,7 @@
     if (typeof createOpeningBackup === 'function') await createOpeningBackup();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0307<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0308<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;

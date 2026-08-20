@@ -363,6 +363,11 @@ button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 .setting-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .setting-grid label{margin:5px 0}
 .credential-hint{margin:4px 0 10px}
+.user-management-list{display:grid;gap:8px;margin:10px 0 14px}
+.user-management-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 12px;border:1px solid #cfe5e7;border-radius:14px;background:#f5fbfc}
+.user-management-row b,.user-management-row small{display:block}
+.user-management-row small{margin-top:3px;color:#6a858a;font-size:13px}
+.user-management-row button{flex:0 0 auto;padding:9px 14px}
 input[readonly]{background:#eef8f9;color:var(--muted);cursor:not-allowed}
 
 .toast{
