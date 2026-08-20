@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0306
+/* 雙發付款管理系統 V8.3 Build 0307
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -263,6 +263,8 @@
     if (!text || !voiceAllowed(kind)) return false;
     signatureFeedbackAllowed = true;
     try {
+      // 若完成提示是在非同步儲存後播放，仍重新喚醒已建立的播放環境。
+      unlockPlayback();
       return speakNow(text, kind, true);
     } finally {
       signatureFeedbackAllowed = false;
@@ -1052,13 +1054,21 @@
       setLogoutBusy(true);
       // 按下登出後直接取得播放授權並開始內部備份，不再要求第二次確認。
       unlockPlayback();
+      // iPhone 會限制非使用者操作期間第一次播放；先在本次按鍵中播放流程提示，
+      // 備份完成後再播放完成提示與登出音效。
+      try {
+        if (voiceSettings().enabled) {
+          playTone('backup');
+          speakNow('正在備份資料，完成後自動登出。', 'backup', true);
+        }
+      } catch (voiceError) { console.warn('登出開始提示音略過', voiceError); }
       if (typeof window.shuangfaStopSignatureVoice === 'function') window.shuangfaStopSignatureVoice();
       try {
         originalToast('正在完成內部備份，請稍候…');
         if (currentUser) saveAudit('登出');
         await requireInternalBackup('登出前完整備份');
         originalToast('完整內部備份已完成，準備登出');
-        await speakPromise('資料已備份完成。', 'backup');
+        if (voiceSettings().enabled) await speakPromise('資料已備份完成。', 'backup', true);
         await new Promise(resolve => setTimeout(resolve, 180));
         await playLogoutSound();
         logout(false, true);
@@ -1183,7 +1193,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0306\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0307\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1268,7 +1278,7 @@
     if (typeof createOpeningBackup === 'function') await createOpeningBackup();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0306<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0307<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
