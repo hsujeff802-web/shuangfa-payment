@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0316
+/* 雙發付款管理系統 V8.3 Build 0320
    雲端授權／裝置綁定、登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -235,6 +235,35 @@
     return saved;
   }
 
+  function savedDeviceIdSync() {
+    const candidates = [
+      safeLocalGet(LICENSE_KEY),
+      safeCookieGet(LICENSE_COOKIE),
+      safeCookieGet(DEVICE_COOKIE)
+    ];
+    for (const candidate of candidates) {
+      const raw = String(candidate || '').trim();
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        const id = parsed?.id || parsed?.device;
+        if (id) return String(id).trim();
+      } catch {}
+    }
+    return String(safeLocalGet(DEVICE_KEY) || '').trim();
+  }
+
+  async function adoptDeviceId(value) {
+    const id = String(value || '').trim();
+    if (!id) return '';
+    deviceIdCache = id;
+    safeLocalSet(DEVICE_KEY, id);
+    safeCookieSet(DEVICE_COOKIE, JSON.stringify({ id }));
+    try { await writeLicenseStore({ id }, DEVICE_IDB_KEY); }
+    catch (error) { console.warn('已保存設備識別碼同步略過', error); }
+    return id;
+  }
+
   function storageContextLabel() {
     const standalone = navigator.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)')?.matches);
     return standalone ? '主畫面 App 模式' : 'Safari 瀏覽器模式';
@@ -343,25 +372,25 @@
   }
 
   async function ensureStableDeviceId() {
-    const localId = safeLocalGet(DEVICE_KEY);
+    const localId = savedDeviceIdSync();
     if (localId) {
       deviceIdCache = localId;
-      return deviceIdCache;
-    }
-
-    const stored = await readLicenseStore(DEVICE_IDB_KEY);
-    if (stored?.id) {
-      deviceIdCache = String(stored.id);
       safeLocalSet(DEVICE_KEY, deviceIdCache);
       return deviceIdCache;
     }
 
+    const savedLicense = await readLicenseStore(LICENSE_IDB_KEY);
+    if (savedLicense?.device) {
+      return adoptDeviceId(savedLicense.device);
+    }
+
+    const stored = await readLicenseStore(DEVICE_IDB_KEY);
+    if (stored?.id) {
+      return adoptDeviceId(stored.id);
+    }
+
     deviceIdCache = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    safeLocalSet(DEVICE_KEY, deviceIdCache);
-    try { await writeLicenseStore({ id: deviceIdCache }, DEVICE_IDB_KEY); }
-    catch (error) { console.warn('設備識別碼備援保存略過', error); }
-    safeCookieSet(DEVICE_COOKIE, JSON.stringify({ id: deviceIdCache }));
-    return deviceIdCache;
+    return adoptDeviceId(deviceIdCache);
   }
 
   async function hash(text) {
@@ -383,13 +412,15 @@
   }
 
   function getDeviceId() {
-    let id = deviceIdCache || safeLocalGet(DEVICE_KEY);
+    let id = deviceIdCache || savedDeviceIdSync();
     if (!id) {
       id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       deviceIdCache = id;
       safeLocalSet(DEVICE_KEY, id);
+      safeCookieSet(DEVICE_COOKIE, JSON.stringify({ id }));
       void writeLicenseStore({ id }, DEVICE_IDB_KEY);
     }
+    safeLocalSet(DEVICE_KEY, id);
     deviceIdCache = id;
     return id;
   }
@@ -510,7 +541,7 @@
           p_device_id: deviceId,
           p_device_label: cloudDeviceLabel(),
           p_platform: String(navigator.platform || navigator.userAgent || '').slice(0, 120),
-          p_app_version: 'V8.3 Build 0316'
+          p_app_version: 'V8.3 Build 0320'
         })
       });
       body = await response.json().catch(() => null);
@@ -568,13 +599,18 @@
       return true;
     }
     licenseValidationMessage = '';
-    await ensureStableDeviceId();
     const candidates = await readLicenseCandidates();
-    const stored = candidates.find(item => item?.code);
+    const stored = candidates.find(item => item?.code && item.device) || candidates.find(item => item?.code);
     if (!stored?.code) {
+      await ensureStableDeviceId();
       licenseState = null;
       return false;
     }
+
+    // 先恢復上次雲端驗證成功的裝置 ID，再呼叫雲端；避免瀏覽器／主畫面 App
+    // 因儲存層順序不同而先產生新 ID，導致每次開啟都被要求重新輸入授權碼。
+    if (stored.device) await adoptDeviceId(stored.device);
+    else await ensureStableDeviceId();
 
     if (navigator.onLine !== false) {
       try {
@@ -585,6 +621,13 @@
       } catch (error) {
         licenseValidationMessage = error.message || '雲端授權驗證失敗';
         console.warn('雲端授權驗證失敗', error);
+        const cached = candidates.find(item => isOfflineLicenseUsable(item));
+        const hardFailure = ['LICENSE_INVALID', 'LICENSE_INACTIVE', 'LICENSE_EXPIRED', 'DEVICE_REVOKED'].includes(error.code);
+        if (cached && !hardFailure) {
+          licenseState = { ...cached, cloud: true, offline: true };
+          licenseValidationMessage = '雲端暫時未完成重新驗證，已使用最近一次有效授權（離線寬限期內）。';
+          return true;
+        }
         if (!error.transient) {
           licenseState = null;
           return false;
@@ -1933,7 +1976,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0316\n資料庫版本：DB 3.0\n最後更新：2026/08/20\n雲端授權：啟用；付款資料仍只保存於本機`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0320\n資料庫版本：DB 3.0\n最後更新：2026/08/20\n雲端授權：啟用；付款資料仍只保存於本機`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -2026,7 +2069,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0316<br><small>雲端授權／裝置綁定測試版；付款資料、照片、簽名與備份仍只保存在本機</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0320<br><small>雲端授權／裝置綁定測試版；付款資料、照片、簽名與備份仍只保存在本機</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
