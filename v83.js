@@ -1,5 +1,5 @@
-/* 雙發付款管理系統 V8.3 Build 0315
-   登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
+/* 雙發付款管理系統 V8.3 Build 0316
+   雲端授權／裝置綁定、登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
 
@@ -32,7 +32,12 @@
   const DEVICE_COOKIE = 'shuangfa_v83_device_rc';
   const LICENSE_DB_NAME = 'shuangfa_license_v1_rc';
   const LICENSE_DB_STORE = 'license';
-  const LICENSE_ENABLED = false;
+  const CLOUD_LICENSE_CONFIG = window.SHuangfaCloudLicenseConfig || {};
+  const LICENSE_ENABLED = Boolean(
+    CLOUD_LICENSE_CONFIG.enabled &&
+    String(CLOUD_LICENSE_CONFIG.supabaseUrl || '').trim() &&
+    String(CLOUD_LICENSE_CONFIG.supabaseAnonKey || '').trim()
+  );
   const LICENSE_CACHE_NAME = 'shuangfa-payment-license-v1';
   const LICENSE_CODE_KEY = 'shuangfa_v83_license_code_rc';
   const LICENSE_CODE_COOKIE = 'shuangfa_v83_license_code_rc';
@@ -266,11 +271,12 @@
       const result = await inspectLicenseStorage();
       const saved = result.valid && result.matched;
       const details = `本機儲存：${result.local ? '正常' : '未讀到'}｜資料庫：${result.indexedDB ? '正常' : '未讀到'}｜快取：${result.cache ? '正常' : '未讀到'}｜Cookie：${result.cookie || result.rawCode ? '正常' : '未讀到'}`;
+      const connection = licenseState?.offline ? '目前離線使用，仍在雲端授權的離線寬限期內' : licenseState?.cloud ? '雲端已驗證' : '尚未完成雲端驗證';
       const message = saved
-        ? `✅ 授權已驗證並保存（${result.context}）<br><small>${details}</small>`
+        ? `✅ 授權已驗證並保存（${connection}／${result.context}）<br><small>${details}</small>`
         : result.hasStored
-          ? `⚠️ 授權資料已保存，但目前未通過驗證。${licenseValidationMessage ? `<br>${licenseValidationMessage}` : '<br>請使用不綁定設備的共用授權碼。'}<br><small>${details}</small>`
-          : `⚠️ 目前尚未讀到可恢復的授權（${result.context}）。請勿使用私密瀏覽，也不要切換 Safari 與主畫面 App。<br><small>${details}</small>`;
+          ? `⚠️ 授權資料已保存，但目前未通過驗證。${licenseValidationMessage ? `<br>${licenseValidationMessage}` : '<br>請連網重新驗證，或確認使用一般瀏覽模式。'}<br><small>${details}</small>`
+          : `⚠️ 目前尚未讀到可恢復的授權（${result.context}）。請連網輸入公司專用授權碼；不要使用私密瀏覽。<br><small>${details}</small>`;
       elements.forEach(element => { element.innerHTML = message; });
     } catch (error) {
       elements.forEach(element => { element.textContent = `⚠️ 授權保存檢測失敗：${error.message || '請確認瀏覽模式'}`; });
@@ -280,14 +286,30 @@
   async function checkLicenseStorage(button) {
     if (button) { button.disabled = true; button.textContent = '檢查中…'; }
     try {
-      if (licenseState?.code) await persistLicenseState(licenseState);
+      if (LICENSE_ENABLED && licenseState?.code && navigator.onLine !== false) {
+        try {
+          const refreshed = await callCloudLicense(licenseState.code);
+          refreshed.activatedAt = licenseState.activatedAt || refreshed.activatedAt || now();
+          licenseState = refreshed;
+          licenseReady = true;
+          await persistLicenseState(licenseState);
+        } catch (error) {
+          licenseValidationMessage = error.message || '雲端授權驗證失敗';
+          if (!error.transient) {
+            licenseState = null;
+            licenseReady = false;
+          }
+        }
+      } else if (licenseState?.code) {
+        await persistLicenseState(licenseState);
+      }
       await renderLicenseStorageStatus();
       const result = await inspectLicenseStorage();
       originalToast(result.valid && result.matched
-        ? `授權已驗證並保存（${result.context}）`
+        ? `授權已驗證並保存（${licenseState?.offline ? '離線寬限' : '雲端驗證'}／${result.context}）`
         : result.hasStored
-          ? `授權資料已保存，但驗證未通過：${licenseValidationMessage || '請使用不綁定設備的共用授權碼。'}`
-          : '目前沒有讀到可恢復的授權，請確認不是私密瀏覽。');
+          ? `授權資料已保存，但驗證未通過：${licenseValidationMessage || '請連網重新驗證。'}`
+          : '目前沒有讀到可恢復的授權，請連網輸入授權碼。');
     } catch (error) {
       originalToast(error.message || '授權保存檢查失敗');
     } finally {
@@ -336,7 +358,8 @@
 
     deviceIdCache = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     safeLocalSet(DEVICE_KEY, deviceIdCache);
-    await writeLicenseStore({ id: deviceIdCache }, DEVICE_IDB_KEY);
+    try { await writeLicenseStore({ id: deviceIdCache }, DEVICE_IDB_KEY); }
+    catch (error) { console.warn('設備識別碼備援保存略過', error); }
     safeCookieSet(DEVICE_COOKIE, JSON.stringify({ id: deviceIdCache }));
     return deviceIdCache;
   }
@@ -420,14 +443,122 @@
     return { ...payload, code };
   }
 
-  async function hasExistingInstallation() {
-    if (safeLocalGet(AUTH_KEY) || safeLocalGet('shuangfa_v83_auth') || safeLocalGet('shuangfa_payment_v52_rc')) return true;
+  function cloudError(message, code = 'CLOUD_UNAVAILABLE', transient = false) {
+    const error = new Error(message);
+    error.code = code;
+    error.transient = transient;
+    return error;
+  }
+
+  function cloudErrorMessage(code, fallback = '雲端授權驗證失敗') {
+    const messages = {
+      LICENSE_INPUT_INVALID: '授權碼或設備資料格式不正確。',
+      LICENSE_INVALID: '授權碼不存在或不正確。',
+      LICENSE_INACTIVE: '此授權已停用，請聯絡授權管理者。',
+      LICENSE_EXPIRED: '此授權已到期。',
+      DEVICE_LIMIT_REACHED: '此授權已達裝置數量上限。',
+      DEVICE_REVOKED: '此裝置已被停用，請聯絡授權管理者。',
+      CLOUD_RESPONSE_INVALID: '雲端授權回應格式不正確。',
+      CLOUD_NOT_READY: '雲端授權資料庫尚未完成設定，請重新執行授權資料表 SQL。',
+      CLOUD_AUTH_FAILED: '雲端授權連線被拒絕，請確認 Supabase 公開金鑰設定。',
+      CLOUD_UNAVAILABLE: '目前無法連線雲端授權，請先連網啟用。'
+    };
+    return messages[code] || fallback;
+  }
+
+  function cloudDeviceLabel() {
+    const standalone = navigator.standalone === true || Boolean(window.matchMedia?.('(display-mode: standalone)')?.matches);
+    const apple = /iPad|iPhone|iPod/i.test(navigator.userAgent || '');
+    return `${apple ? 'Apple' : '一般'} ${standalone ? '主畫面 App' : '瀏覽器'}｜${navigator.platform || '未知平台'}`.slice(0, 120);
+  }
+
+  function isLicenseExpired(state) {
+    if (!state?.expiresAt) return false;
+    const expires = Date.parse(state.expiresAt);
+    return !Number.isFinite(expires) || expires <= Date.now();
+  }
+
+  function isOfflineLicenseUsable(state) {
+    if (!state?.code || state.device !== getDeviceId() || isLicenseExpired(state)) return false;
+    const validatedAt = Date.parse(state.lastValidatedAt || state.activatedAt || '');
+    const graceDays = Math.max(0, Number(state.offlineGraceDays ?? CLOUD_LICENSE_CONFIG.offlineFallbackDays ?? 30));
+    return Number.isFinite(validatedAt) && Date.now() - validatedAt <= graceDays * 24 * 60 * 60 * 1000;
+  }
+
+  async function callCloudLicense(rawCode) {
+    const code = String(rawCode || '').trim();
+    const deviceId = await ensureStableDeviceId();
+    if (!code || code.length > 240 || !deviceId) throw cloudError(cloudErrorMessage('LICENSE_INPUT_INVALID', '請輸入有效的授權碼。'), 'LICENSE_INPUT_INVALID');
+    const baseUrl = String(CLOUD_LICENSE_CONFIG.supabaseUrl || '').replace(/\/+$/, '');
+    const rpcName = encodeURIComponent(String(CLOUD_LICENSE_CONFIG.rpcName || 'activate_license'));
+    const endpoint = `${baseUrl}/rest/v1/rpc/${rpcName}`;
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    const timeout = controller ? setTimeout(() => controller.abort(), 12000) : null;
+    let response;
+    let body = null;
     try {
-      const storedDb = typeof readFromIndexedDB === 'function' ? await readFromIndexedDB('db') : null;
-      return Boolean(storedDb && Array.isArray(storedDb.payments));
-    } catch {
-      return false;
+      response = await fetch(endpoint, {
+        method: 'POST',
+        signal: controller?.signal,
+        headers: {
+          apikey: String(CLOUD_LICENSE_CONFIG.supabaseAnonKey),
+          Authorization: `Bearer ${String(CLOUD_LICENSE_CONFIG.supabaseAnonKey)}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          p_license_code: code,
+          p_device_id: deviceId,
+          p_device_label: cloudDeviceLabel(),
+          p_platform: String(navigator.platform || navigator.userAgent || '').slice(0, 120),
+          p_app_version: 'V8.3 Build 0316'
+        })
+      });
+      body = await response.json().catch(() => null);
+    } catch (error) {
+      const message = error?.name === 'AbortError' ? '雲端授權連線逾時，請確認網路後重試。' : cloudErrorMessage('CLOUD_UNAVAILABLE');
+      throw cloudError(message, 'CLOUD_UNAVAILABLE', true);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
+    if (!response.ok) {
+      const raw = String(body?.message || body?.hint || body?.details || body?.code || '');
+      const match = raw.match(/LICENSE_[A-Z_]+|DEVICE_[A-Z_]+/);
+      const codeName = match?.[0]
+        || (response.status === 401 || response.status === 403 ? 'CLOUD_AUTH_FAILED'
+          : response.status === 404 || response.status === 405 ? 'CLOUD_NOT_READY'
+            : response.status >= 500 || response.status === 429 ? 'CLOUD_UNAVAILABLE' : 'LICENSE_INVALID');
+      throw cloudError(cloudErrorMessage(codeName, raw || undefined), codeName, response.status >= 500 || response.status === 429);
+    }
+    const result = Array.isArray(body) ? body[0] : body;
+    if (!result?.company || !result?.deviceId) throw cloudError(cloudErrorMessage('CLOUD_RESPONSE_INVALID'), 'CLOUD_RESPONSE_INVALID', true);
+    if (String(result.deviceId) !== deviceId) throw cloudError('雲端回傳的設備識別不一致，請重新啟用。', 'CLOUD_RESPONSE_INVALID');
+    return {
+      version: 2,
+      cloud: true,
+      offline: false,
+      code,
+      company: String(result.company),
+      plan: String(result.plan || '授權版'),
+      expiresAt: String(result.expiresAt || ''),
+      maxDevices: Math.max(1, Number(result.maxDevices || 1)),
+      offlineGraceDays: Math.max(0, Number(result.offlineGraceDays ?? CLOUD_LICENSE_CONFIG.offlineFallbackDays ?? 30)),
+      device: deviceId,
+      lastValidatedAt: String(result.lastValidatedAt || now()),
+      activatedAt: licenseState?.activatedAt || now()
+    };
+  }
+
+  async function readLicenseCandidates() {
+    const candidates = [];
+    const add = value => {
+      if (!value || typeof value !== 'object' || !value.code) return;
+      if (!candidates.some(item => item.code === value.code && item.device === value.device && item.lastValidatedAt === value.lastValidatedAt)) candidates.push(value);
+    };
+    const rawCode = readRawLicenseCode();
+    if (rawCode) add({ code: rawCode });
+    try { add(JSON.parse(safeLocalGet(LICENSE_KEY) || 'null')); } catch {}
+    try { (await readLicenseStores(LICENSE_IDB_KEY)).forEach(add); } catch (error) { console.warn('授權資料讀取略過', error); }
+    return candidates;
   }
 
   async function ensureLicense() {
@@ -438,41 +569,33 @@
     }
     licenseValidationMessage = '';
     await ensureStableDeviceId();
-    const candidates = [];
-    const rawCode = readRawLicenseCode();
-    if (rawCode) candidates.push({ code: rawCode });
-    try {
-      const localStored = JSON.parse(safeLocalGet(LICENSE_KEY) || 'null');
-      if (localStored) candidates.push(localStored);
-    } catch {}
-    const storedValues = await readLicenseStores(LICENSE_IDB_KEY);
-    storedValues.forEach(value => {
-      if (!candidates.some(item => JSON.stringify(item) === JSON.stringify(value))) candidates.push(value);
-    });
+    const candidates = await readLicenseCandidates();
+    const stored = candidates.find(item => item?.code);
+    if (!stored?.code) {
+      licenseState = null;
+      return false;
+    }
 
-    for (const stored of candidates) {
-      if (stored?.legacy && stored.device === getDeviceId()) {
-        licenseState = stored;
+    if (navigator.onLine !== false) {
+      try {
+        licenseState = await callCloudLicense(stored.code);
+        licenseState.activatedAt = stored.activatedAt || licenseState.activatedAt || now();
         await persistLicenseState(licenseState);
         return true;
-      }
-      if (stored?.code) {
-        try {
-          licenseState = await decodeLicenseCode(stored.code);
-          licenseState.activatedAt = stored.activatedAt || now();
-          await persistLicenseState(licenseState);
-          return true;
-        } catch (error) {
-          if (!licenseValidationMessage) licenseValidationMessage = error.message || '授權資料與目前使用環境不符';
-          console.warn('授權驗證失敗', error);
+      } catch (error) {
+        licenseValidationMessage = error.message || '雲端授權驗證失敗';
+        console.warn('雲端授權驗證失敗', error);
+        if (!error.transient) {
+          licenseState = null;
+          return false;
         }
       }
     }
 
-    // Build 0309 以前已在本機使用的裝置不鎖定，避免更新後影響既有資料。
-    if (await hasExistingInstallation()) {
-      licenseState = { version: 1, company: settings?.systemName || '雙發付款管理系統', plan: '永久', expiresAt: '', device: getDeviceId(), legacy: true, code: 'LOCAL-LEGACY', activatedAt: now() };
-      await persistLicenseState(licenseState);
+    const cached = candidates.find(item => isOfflineLicenseUsable(item));
+    if (cached) {
+      licenseState = { ...cached, cloud: true, offline: true };
+      licenseValidationMessage = '目前離線使用，仍在授權的離線寬限期間。';
       return true;
     }
     licenseState = null;
@@ -482,9 +605,9 @@
   function licenseDescription() {
     if (!LICENSE_ENABLED) return '單機版：授權門禁已關閉。登入帳號與密碼仍然有效。';
     if (!licenseState) return '尚未啟用授權。請輸入公司專用授權碼。';
-    if (licenseState.legacy) return `公司：${licenseState.company}<br>授權期限：永久（既有本機安裝）`;
     const expiry = licenseState.expiresAt ? new Date(licenseState.expiresAt).toLocaleDateString('zh-TW') : '永久';
-    return `公司：${licenseState.company}<br>授權方案：${licenseState.plan || '授權版'}<br>有效期限：${expiry}`;
+    const connection = licenseState.offline ? '目前離線使用（仍在寬限期）' : '雲端已驗證';
+    return `公司：${licenseState.company}<br>授權方案：${licenseState.plan || '授權版'}<br>有效期限：${expiry}<br><small>${connection}</small>`;
   }
 
   function renderLicenseInfo() {
@@ -520,8 +643,7 @@
     const button = q('#activateLicense');
     if (button) { button.disabled = true; button.textContent = '驗證中…'; }
     try {
-      licenseState = await decodeLicenseCode(code);
-      licenseState.activatedAt = now();
+      licenseState = await callCloudLicense(code);
       await persistLicenseState(licenseState);
       licenseValidationMessage = '';
       licenseReady = true;
@@ -788,7 +910,7 @@
             <img src="icon-192.png" alt="系統 Logo" class="login-logo">
             <h2>系統授權啟用</h2>
           </div>
-          <p class="license-intro">此網址需要公司授權才能使用。Safari 網頁版與主畫面 App 可能是不同保存區；若要兩邊使用，請使用不綁定設備的公司共用授權碼。請使用一般瀏覽模式，不要使用私密瀏覽。</p>
+          <p class="license-intro">此系統需要公司專用授權才能使用。第一次在手機、平板或電腦開啟時請連網啟用；之後付款資料、照片、簽名與備份仍保存在本機，雲端只驗證授權與設備狀態。Safari 網頁版與主畫面 App 可能算不同設備，請固定使用同一種開啟方式，不要使用私密瀏覽。</p>
           <div id="licenseMessage" class="login-message">請輸入授權碼開始使用。</div>
           <div class="lock-notice"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span><br><small>如需綁定手機／平板，請把此識別碼提供給授權管理者。</small></div>
           <div class="login-input-row"><span class="login-input-icon" aria-hidden="true">🔑</span><input id="licenseCode" autocomplete="off" autocapitalize="characters" placeholder="請貼上公司專用授權碼" aria-label="授權碼"></div>
@@ -845,7 +967,7 @@
       <div class="card" id="licenseInfoCard">
         <h3>🔑 軟體授權</h3>
         <div id="licenseStatus" class="backup-status"></div>
-        <p class="hint">新手機或平板需要公司專用授權碼才能使用。授權資料會保存在本機資料庫，不會上傳付款內容。</p>
+        <p class="hint">新手機或平板需要公司專用授權碼才能使用。雲端只保存公司授權與設備識別，不會上傳付款內容、照片、簽名或備份。</p>
         <div class="backup-status"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span></div>
         <div id="licenseStorageStatusSettings" class="backup-status">尚未檢查授權保存狀態。</div>
         <button id="checkLicenseStorage" class="secondary full">檢查授權保存</button>
@@ -1811,7 +1933,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0315\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0316\n資料庫版本：DB 3.0\n最後更新：2026/08/20\n雲端授權：啟用；付款資料仍只保存於本機`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1904,7 +2026,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0315<br><small>單機版已關閉授權碼門禁；登入帳號、密碼與系統設定密碼保留</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0316<br><small>雲端授權／裝置綁定測試版；付款資料、照片、簽名與備份仍只保存在本機</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
@@ -1919,7 +2041,7 @@
     applyVoiceSettings();
     installEvents();
     if (!licenseReady) {
-      showLicenseGate(licenseValidationMessage ? `已讀到已保存的授權，但驗證未通過：${licenseValidationMessage}。請輸入可在此模式使用的授權碼。` : '尚未啟用授權，請輸入公司專用授權碼。');
+      showLicenseGate(licenseValidationMessage ? `已讀到已保存的授權，但目前無法完成驗證：${licenseValidationMessage}。請連網重新啟用或驗證。` : '尚未啟用授權，請連網輸入公司專用授權碼。');
       return;
     }
     await ensureAuth();

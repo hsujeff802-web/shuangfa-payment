@@ -1,7 +1,7 @@
 {
-  "name": "雙發付款管理系統 V8.3 Build 0315・單機免授權正式版",
+  "name": "雙發付款管理系統 V8.3 Build 0316・雲端授權裝置綁定測試版",
   "short_name": "雙發付款",
-  "start_url": "./index.html?v=83412",
+  "start_url": "./index.html?v=83413",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f1f9fa",

@@ -1,4 +1,16 @@
-# 雙發付款管理系統 V8.3 Build 0315 單機免授權正式版
+# 雙發付款管理系統 V8.3 Build 0316 雲端授權裝置綁定測試版
+
+## V8.3 Build 0316 雲端授權裝置綁定測試版
+- 第一次使用需連網輸入公司專用授權碼，Supabase 只保存授權與最小設備資料。
+- 付款資料、照片、簽名、登入帳號、密碼與完整備份仍只保存於目前手機／平板／電腦。
+- 已啟用的設備斷網時可依授權設定的離線寬限天數繼續使用；重新連網會再次驗證。
+- Safari 瀏覽器與 iPhone／iPad 主畫面 App 可能是不同的瀏覽器保存區，測試時請固定一種開啟方式。
+- 本版是雲端授權測試版，尚未推送到 GitHub Pages 正式網址。
+
+## Supabase 設定
+- 前端設定在 `cloud-config.js`，只包含 Supabase URL 與 publishable key；不可放入 service role key、資料庫密碼或其他秘密。
+- `supabase/license-schema.sql` 建立授權與設備資料表及 `activate_license` RPC。
+- `supabase/test-license.sql` 可建立本次測試授權；測試完成後應停用或刪除測試授權。
 
 ## V8.3 Build 0315 單機免授權正式版
 - 已關閉啟動時的公司授權碼門禁，不再因手機或 iPad 無法保存授權而卡住。
