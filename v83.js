@@ -2145,6 +2145,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     if (typeof createOpeningBackup === 'function') await createOpeningBackup();
     licenseReady = await ensureLicense();
+    if (licenseReady) hideLicenseGate();
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
