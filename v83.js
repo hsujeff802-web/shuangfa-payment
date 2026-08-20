@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0309
+/* 雙發付款管理系統 V8.3 Build 0310
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -25,15 +25,83 @@
   let logoutInProgress = false;
   let signatureFeedbackAllowed = false;
   const LICENSE_KEY = 'shuangfa_v83_license_rc';
+  const LICENSE_IDB_KEY = 'shuangfa_v83_license_rc';
+  const DEVICE_IDB_KEY = 'shuangfa_v83_device_rc';
   const DEVICE_KEY = 'shuangfa_v83_device_rc';
   const LICENSE_SECRET = 'shuangfa-v83-offline-license-2026';
   let licenseState = null;
   let licenseReady = false;
+  let deviceIdCache = '';
 
   const q = selector => document.querySelector(selector);
   const qa = selector => [...document.querySelectorAll(selector)];
   const now = () => new Date().toISOString();
   const uid = () => crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+
+  // Safari／iPad 可能因私密瀏覽或網站資料限制，讓 localStorage 無法長期保存。
+  // 授權與設備識別碼另外寫入既有 IndexedDB，重新開啟時可自動補回 localStorage。
+  function safeLocalGet(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+
+  function safeLocalSet(key, value) {
+    try { localStorage.setItem(key, value); return true; } catch { return false; }
+  }
+
+  function safeLocalRemove(key) {
+    try { localStorage.removeItem(key); } catch {}
+  }
+
+  async function readLicenseStore(key) {
+    try {
+      if (typeof readFromIndexedDB !== 'function') return null;
+      const value = await readFromIndexedDB(key);
+      return value && typeof value === 'object' ? value : null;
+    } catch (error) {
+      console.warn('授權本機資料庫讀取略過', error);
+      return null;
+    }
+  }
+
+  async function writeLicenseStore(value, key) {
+    try {
+      if (typeof writeToIndexedDB !== 'function') return false;
+      await writeToIndexedDB(value, key);
+      return true;
+    } catch (error) {
+      console.warn('授權本機資料庫寫入略過', error);
+      return false;
+    }
+  }
+
+  async function persistLicenseState(state) {
+    const localSaved = safeLocalSet(LICENSE_KEY, JSON.stringify(state));
+    const indexedDbSaved = await writeLicenseStore(state, LICENSE_IDB_KEY);
+    if (!localSaved && !indexedDbSaved) {
+      throw new Error('此瀏覽器目前禁止保存授權資料，請關閉私密瀏覽後重新開啟。');
+    }
+    return { localSaved, indexedDbSaved };
+  }
+
+  async function ensureStableDeviceId() {
+    const localId = safeLocalGet(DEVICE_KEY);
+    if (localId) {
+      deviceIdCache = localId;
+      return deviceIdCache;
+    }
+
+    const stored = await readLicenseStore(DEVICE_IDB_KEY);
+    if (stored?.id) {
+      deviceIdCache = String(stored.id);
+      safeLocalSet(DEVICE_KEY, deviceIdCache);
+      return deviceIdCache;
+    }
+
+    deviceIdCache = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    safeLocalSet(DEVICE_KEY, deviceIdCache);
+    await writeLicenseStore({ id: deviceIdCache }, DEVICE_IDB_KEY);
+    return deviceIdCache;
+  }
 
   async function hash(text) {
     if (crypto?.subtle) {
@@ -54,11 +122,14 @@
   }
 
   function getDeviceId() {
-    let id = localStorage.getItem(DEVICE_KEY);
+    let id = deviceIdCache || safeLocalGet(DEVICE_KEY);
     if (!id) {
       id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      localStorage.setItem(DEVICE_KEY, id);
+      deviceIdCache = id;
+      safeLocalSet(DEVICE_KEY, id);
+      void writeLicenseStore({ id }, DEVICE_IDB_KEY);
     }
+    deviceIdCache = id;
     return id;
   }
 
@@ -111,32 +182,48 @@
     return { ...payload, code };
   }
 
-  function hasExistingInstallation() {
-    return Boolean(localStorage.getItem(AUTH_KEY) || localStorage.getItem('shuangfa_v83_auth') || localStorage.getItem('shuangfa_payment_v52_rc'));
+  async function hasExistingInstallation() {
+    if (safeLocalGet(AUTH_KEY) || safeLocalGet('shuangfa_v83_auth') || safeLocalGet('shuangfa_payment_v52_rc')) return true;
+    try {
+      const storedDb = typeof readFromIndexedDB === 'function' ? await readFromIndexedDB('db') : null;
+      return Boolean(storedDb && Array.isArray(storedDb.payments));
+    } catch {
+      return false;
+    }
   }
 
   async function ensureLicense() {
-    const stored = (() => { try { return JSON.parse(localStorage.getItem(LICENSE_KEY) || 'null'); } catch { return null; } })();
-    if (stored?.legacy && stored.device === getDeviceId()) {
-      licenseState = stored;
-      return true;
-    }
-    if (stored?.code) {
-      try {
-        licenseState = await decodeLicenseCode(stored.code);
-        localStorage.setItem(LICENSE_KEY, JSON.stringify({ ...licenseState, activatedAt: stored.activatedAt || now() }));
+    await ensureStableDeviceId();
+    const candidates = [];
+    try {
+      const localStored = JSON.parse(safeLocalGet(LICENSE_KEY) || 'null');
+      if (localStored) candidates.push(localStored);
+    } catch {}
+    const indexedDbStored = await readLicenseStore(LICENSE_IDB_KEY);
+    if (indexedDbStored && JSON.stringify(indexedDbStored) !== JSON.stringify(candidates[0] || null)) candidates.push(indexedDbStored);
+
+    for (const stored of candidates) {
+      if (stored?.legacy && stored.device === getDeviceId()) {
+        licenseState = stored;
+        await persistLicenseState(licenseState);
         return true;
-      } catch (error) {
-        console.warn('授權驗證失敗', error);
-        localStorage.removeItem(LICENSE_KEY);
-        licenseState = null;
-        return false;
+      }
+      if (stored?.code) {
+        try {
+          licenseState = await decodeLicenseCode(stored.code);
+          licenseState.activatedAt = stored.activatedAt || now();
+          await persistLicenseState(licenseState);
+          return true;
+        } catch (error) {
+          console.warn('授權驗證失敗', error);
+        }
       }
     }
+
     // Build 0309 以前已在本機使用的裝置不鎖定，避免更新後影響既有資料。
-    if (hasExistingInstallation()) {
+    if (await hasExistingInstallation()) {
       licenseState = { version: 1, company: settings?.systemName || '雙發付款管理系統', plan: '永久', expiresAt: '', device: getDeviceId(), legacy: true, code: 'LOCAL-LEGACY', activatedAt: now() };
-      localStorage.setItem(LICENSE_KEY, JSON.stringify(licenseState));
+      await persistLicenseState(licenseState);
       return true;
     }
     licenseState = null;
@@ -181,7 +268,7 @@
     try {
       licenseState = await decodeLicenseCode(code);
       licenseState.activatedAt = now();
-      localStorage.setItem(LICENSE_KEY, JSON.stringify(licenseState));
+      await persistLicenseState(licenseState);
       licenseReady = true;
       await ensureAuth();
       hideLicenseGate();
@@ -432,7 +519,7 @@
             <img src="icon-192.png" alt="系統 Logo" class="login-logo">
             <h2>系統授權啟用</h2>
           </div>
-          <p class="license-intro">此網址需要公司授權才能使用。請向系統提供者取得專用授權碼。</p>
+          <p class="license-intro">此網址需要公司授權才能使用。請向系統提供者取得專用授權碼。請使用一般瀏覽模式，不要使用私密瀏覽。</p>
           <div id="licenseMessage" class="login-message">請輸入授權碼開始使用。</div>
           <div class="lock-notice"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span><br><small>如需綁定手機／平板，請把此識別碼提供給授權管理者。</small></div>
           <div class="login-input-row"><span class="login-input-icon" aria-hidden="true">🔑</span><input id="licenseCode" autocomplete="off" autocapitalize="characters" placeholder="請貼上公司專用授權碼" aria-label="授權碼"></div>
@@ -487,7 +574,7 @@
       <div class="card" id="licenseInfoCard">
         <h3>🔑 軟體授權</h3>
         <div id="licenseStatus" class="backup-status"></div>
-        <p class="hint">新手機或平板需要公司專用授權碼才能使用。授權資料只保存在本機，不會上傳付款內容。</p>
+        <p class="hint">新手機或平板需要公司專用授權碼才能使用。授權資料會保存在本機資料庫，不會上傳付款內容。</p>
         <div class="backup-status"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span></div>
         <button id="copyLicenseDevice" class="secondary full">複製設備識別碼</button>
       </div>`);
@@ -1445,7 +1532,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0309\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0310\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1533,7 +1620,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0309<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0310<br><small>授權資料改用本機資料庫備援保存；進入系統設定需輸入目前登入密碼</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
