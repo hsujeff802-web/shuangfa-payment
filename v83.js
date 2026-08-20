@@ -613,9 +613,9 @@
   function renderLicenseInfo() {
     if (!LICENSE_ENABLED) return;
     const status = q('#licenseStatus');
-    const device = q('#licenseDeviceId');
+    const deviceId = getDeviceId();
     if (status) status.innerHTML = licenseDescription();
-    if (device) device.textContent = getDeviceId();
+    qa('#licenseDeviceIdGate, #licenseDeviceIdSettings').forEach(element => { element.textContent = deviceId; });
     void renderLicenseStorageStatus();
   }
 
@@ -912,7 +912,7 @@
           </div>
           <p class="license-intro">此系統需要公司專用授權才能使用。第一次在手機、平板或電腦開啟時請連網啟用；之後付款資料、照片、簽名與備份仍保存在本機，雲端只驗證授權與設備狀態。Safari 網頁版與主畫面 App 可能算不同設備，請固定使用同一種開啟方式，不要使用私密瀏覽。</p>
           <div id="licenseMessage" class="login-message">請輸入授權碼開始使用。</div>
-          <div class="lock-notice"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span><br><small>如需綁定手機／平板，請把此識別碼提供給授權管理者。</small></div>
+          <div class="lock-notice"><b>本機設備識別碼</b><br><span id="licenseDeviceIdGate"></span><br><small>如需綁定手機／平板，請把此識別碼提供給授權管理者。</small></div>
           <div class="login-input-row"><span class="login-input-icon" aria-hidden="true">🔑</span><input id="licenseCode" autocomplete="off" autocapitalize="characters" placeholder="請貼上公司專用授權碼" aria-label="授權碼"></div>
           <button id="activateLicense" class="primary full">啟用系統授權</button>
           <div id="licenseStorageStatus" class="backup-status">尚未檢查授權保存狀態。</div>
@@ -968,7 +968,7 @@
         <h3>🔑 軟體授權</h3>
         <div id="licenseStatus" class="backup-status"></div>
         <p class="hint">新手機或平板需要公司專用授權碼才能使用。雲端只保存公司授權與設備識別，不會上傳付款內容、照片、簽名或備份。</p>
-        <div class="backup-status"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span></div>
+        <div class="backup-status"><b>本機設備識別碼</b><br><span id="licenseDeviceIdSettings"></span></div>
         <div id="licenseStorageStatusSettings" class="backup-status">尚未檢查授權保存狀態。</div>
         <button id="checkLicenseStorage" class="secondary full">檢查授權保存</button>
         <button id="copyLicenseDevice" class="secondary full">複製設備識別碼</button>
