@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0293
+/* 雙發付款管理系統 V8.3 RC Build 0294
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -209,6 +209,19 @@
     if (item) speakNow(item.text, item.kind);
   }
 
+  function unlockPlayback() {
+    unlockVoice();
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      audioContext = audioContext || new AudioCtx();
+      if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+      window.speechSynthesis?.getVoices?.();
+    } catch (error) {
+      console.warn('登入／登出播放權限啟用失敗', error);
+    }
+  }
+
   window.shuangfaSpeak = speak;
 
   function injectUI() {
@@ -376,6 +389,8 @@
   }
 
   async function login() {
+    // 必須在使用者按下登入的同一個操作中啟用播放，避免 iPhone／iPad 偶爾阻擋音效。
+    unlockPlayback();
     const currentTime = Date.now();
     if (currentTime < lockUntil) {
       const seconds = Math.ceil((lockUntil - currentTime) / 1000);
@@ -417,7 +432,8 @@
     renderUser();
     resetIdleTimer();
     saveAudit('登入');
-    playLoginWelcome();
+    // 等歡迎聲完成後才播啟動提醒，避免 speechSynthesis.cancel() 把登入聲取消。
+    await playLoginWelcome();
     queueStartupAnnouncements();
   }
 
@@ -442,10 +458,16 @@
     return new Promise(resolve => {
       try {
         const audio = new Audio(dataUrl);
+        audio.preload = 'auto';
+        audio.playsInline = true;
+        audio.setAttribute('playsinline', '');
         audio.volume = voiceSettings().volume;
-        const done = result => { audio.onended = audio.onerror = null; resolve(result); };
+        let timer = null;
+        const done = result => { if (timer) clearTimeout(timer); audio.onended = audio.onerror = null; resolve(result); };
         audio.onended = () => done(true);
-        audio.onerror = () => done(false);
+        audio.onerror = () => { console.warn('自訂音樂播放失敗'); done(false); };
+        // 某些 iOS 版本不回報 ended/error，避免登入流程卡住。
+        timer = setTimeout(() => done(false), 15000);
         const result = audio.play();
         if (result?.catch) result.catch(() => done(false));
       } catch { resolve(false); }
@@ -485,7 +507,11 @@
     if (!a.loginEnabled) return;
     const systemName = typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統';
     const text = String(a.loginText || '歡迎進入{系統名稱}').replaceAll('{系統名稱}', systemName);
-    if (a.loginMode === 'music') return playAudioData(a.loginMusicData);
+    if (a.loginMode === 'music') {
+      if (!a.loginMusicData) return speakPromise(text);
+      const played = await playAudioData(a.loginMusicData);
+      return played || speakPromise(text);
+    }
     if (a.loginMode === 'musicVoice') { await playAudioData(a.loginMusicData); return speakPromise(text); }
     if (a.loginMode === 'voiceMusic') { await speakPromise(text); return playAudioData(a.loginMusicData); }
     return speakPromise(text);
@@ -493,7 +519,11 @@
 
   async function playLogoutBaseSound(a) {
     if (a.logoutMode === 'none') return;
-    if (a.logoutMode === 'custom' && a.logoutMusicData) return playAudioData(a.logoutMusicData);
+    if (a.logoutMode === 'custom') {
+      if (!a.logoutMusicData) return playWindowsStyleLogoutSound();
+      const played = await playAudioData(a.logoutMusicData);
+      return played || playWindowsStyleLogoutSound();
+    }
     if (a.logoutMode === 'windowsxp') return playWindowsXPStyleShutdownSound();
     return playWindowsStyleLogoutSound();
   }
@@ -546,11 +576,14 @@
     });
   }
 
-  function playWindowsXPStyleShutdownSound() {
+  async function playWindowsXPStyleShutdownSound() {
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) return Promise.resolve();
-      const context = new AudioContextClass();
+      const reusable = audioContext && audioContext.state !== 'closed';
+      const context = reusable ? audioContext : new AudioContextClass();
+      audioContext = context;
+      if (context.state === 'suspended') await context.resume().catch(() => {});
       const now = context.currentTime;
       const master = context.createGain();
       master.gain.setValueAtTime(0.0001, now);
@@ -579,7 +612,7 @@
         oscillator.stop(start + note.d + 0.05);
       });
       return new Promise(resolve => setTimeout(() => {
-        context.close().catch(() => {});
+        if (!reusable) context.close().catch(() => {});
         resolve();
       }, 2250));
     } catch (error) {
@@ -588,11 +621,14 @@
     }
   }
 
-  function playWindowsStyleLogoutSound() {
+  async function playWindowsStyleLogoutSound() {
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) return Promise.resolve();
-      const context = new AudioContextClass();
+      const reusable = audioContext && audioContext.state !== 'closed';
+      const context = reusable ? audioContext : new AudioContextClass();
+      audioContext = context;
+      if (context.state === 'suspended') await context.resume().catch(() => {});
       const now = context.currentTime;
       const master = context.createGain();
       master.gain.setValueAtTime(0.0001, now);
@@ -614,7 +650,7 @@
         oscillator.stop(start + 0.45);
       });
       return new Promise(resolve => setTimeout(() => {
-        context.close().catch(() => {});
+        if (!reusable) context.close().catch(() => {});
         resolve();
       }, 1200));
     } catch (error) {
@@ -901,6 +937,8 @@
     q('#loginCode').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); q('#loginPassword').focus(); } });
     q('#loginPassword').addEventListener('keydown', event => { if (event.key === 'Enter') login(); });
     const backupAndLogout = async () => {
+      // 先在登出按鍵的點擊事件中取得播放授權，再等待完整備份。
+      unlockPlayback();
       const choice = await showLogoutChoice();
       if (choice === 'cancel') return;
       if (choice !== 'backup') return;
@@ -978,8 +1016,8 @@
       originalToast('登入／登出設定已儲存');
       speak('登入與登出設定已儲存完成。', 'success');
     };
-    q('#testLoginSound').onclick = () => { voiceReady = true; playLoginWelcome(); };
-    q('#testLogoutSound').onclick = () => { voiceReady = true; playLogoutSound(); };
+    q('#testLoginSound').onclick = () => { unlockPlayback(); playLoginWelcome(); };
+    q('#testLogoutSound').onclick = () => { unlockPlayback(); playLogoutSound(); };
     q('#removeLoginMusic').onclick = () => { settings.loginMusicData=''; settings.loginMusicName=''; saveSettings(); applyAudioSettings(); originalToast('登入音樂已移除'); };
     q('#removeLogoutMusic').onclick = () => { settings.logoutMusicData=''; settings.logoutMusicName=''; saveSettings(); applyAudioSettings(); originalToast('登出音樂已移除'); };
 
@@ -1035,7 +1073,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0293\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0294\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1119,7 +1157,7 @@
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0293<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0294<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;

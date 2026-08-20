@@ -1,9 +1,9 @@
-const CACHE_NAME='shuangfa-payment-v8.3-buildrc0293-settings-password';
+const CACHE_NAME='shuangfa-payment-v8.3-buildrc0294-audio-stability';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83293',
-  './app.js?v=83293','./v83.js?v=83293',
+  './styles.css?v=83294',
+  './app.js?v=83294','./v83.js?v=83294',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
