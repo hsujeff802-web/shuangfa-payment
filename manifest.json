@@ -1,7 +1,7 @@
 {
-  "name": "雙發付款管理系統 V8.3 Build 0312・iPad授權保存檢測版",
+  "name": "雙發付款管理系統 V8.3 Build 0313・授權驗證診斷版",
   "short_name": "雙發付款",
-  "start_url": "./index.html?v=83409",
+  "start_url": "./index.html?v=83410",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f1f9fa",

@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0312
+/* 雙發付款管理系統 V8.3 Build 0313
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -36,6 +36,7 @@
   let licenseState = null;
   let licenseReady = false;
   let deviceIdCache = '';
+  let licenseValidationMessage = '';
 
   const q = selector => document.querySelector(selector);
   const qa = selector => [...document.querySelectorAll(selector)];
@@ -184,11 +185,14 @@
     const stored = await readLicenseStores(LICENSE_IDB_KEY);
     const cookie = (() => { try { return JSON.parse(safeCookieGet(LICENSE_COOKIE) || 'null'); } catch { return null; } })();
     const code = licenseState?.code || '';
+    const storedCode = local?.code || cookie?.code || stored.find(item => item?.code)?.code || '';
     return {
       context: storageContextLabel(),
       local: Boolean(local?.code),
       indexedDB: stored.some(item => Boolean(item?.code)),
       cookie: Boolean(cookie?.code),
+      hasStored: Boolean(storedCode),
+      valid: Boolean(licenseState?.code),
       matched: Boolean(code && (local?.code === code || cookie?.code === code || stored.some(item => item?.code === code)))
     };
   }
@@ -199,11 +203,13 @@
     elements.forEach(element => { element.textContent = '正在檢查授權保存狀態…'; });
     try {
       const result = await inspectLicenseStorage();
-      const saved = result.matched;
+      const saved = result.valid && result.matched;
       const details = `本機儲存：${result.local ? '正常' : '未讀到'}｜資料庫：${result.indexedDB ? '正常' : '未讀到'}｜備援：${result.cookie ? '正常' : '未讀到'}`;
       const message = saved
-        ? `✅ 授權已保存（${result.context}）<br><small>${details}</small>`
-        : `⚠️ 目前尚未讀到可恢復的授權（${result.context}）。請勿使用私密瀏覽，也不要切換 Safari 與主畫面 App。<br><small>${details}</small>`;
+        ? `✅ 授權已驗證並保存（${result.context}）<br><small>${details}</small>`
+        : result.hasStored
+          ? `⚠️ 授權資料已保存，但目前未通過驗證。${licenseValidationMessage ? `<br>${licenseValidationMessage}` : '<br>請使用不綁定設備的共用授權碼。'}<br><small>${details}</small>`
+          : `⚠️ 目前尚未讀到可恢復的授權（${result.context}）。請勿使用私密瀏覽，也不要切換 Safari 與主畫面 App。<br><small>${details}</small>`;
       elements.forEach(element => { element.innerHTML = message; });
     } catch (error) {
       elements.forEach(element => { element.textContent = `⚠️ 授權保存檢測失敗：${error.message || '請確認瀏覽模式'}`; });
@@ -216,7 +222,11 @@
       if (licenseState?.code) await persistLicenseState(licenseState);
       await renderLicenseStorageStatus();
       const result = await inspectLicenseStorage();
-      originalToast(result.matched ? `授權已保存（${result.context}）` : '目前沒有讀到可恢復的授權，請確認不是私密瀏覽。');
+      originalToast(result.valid && result.matched
+        ? `授權已驗證並保存（${result.context}）`
+        : result.hasStored
+          ? `授權資料已保存，但驗證未通過：${licenseValidationMessage || '請使用不綁定設備的共用授權碼。'}`
+          : '目前沒有讀到可恢復的授權，請確認不是私密瀏覽。');
     } catch (error) {
       originalToast(error.message || '授權保存檢查失敗');
     } finally {
@@ -356,6 +366,7 @@
   }
 
   async function ensureLicense() {
+    licenseValidationMessage = '';
     await ensureStableDeviceId();
     const candidates = [];
     try {
@@ -380,6 +391,7 @@
           await persistLicenseState(licenseState);
           return true;
         } catch (error) {
+          if (!licenseValidationMessage) licenseValidationMessage = error.message || '授權資料與目前使用環境不符';
           console.warn('授權驗證失敗', error);
         }
       }
@@ -435,6 +447,7 @@
       licenseState = await decodeLicenseCode(code);
       licenseState.activatedAt = now();
       await persistLicenseState(licenseState);
+      licenseValidationMessage = '';
       licenseReady = true;
       await ensureAuth();
       hideLicenseGate();
@@ -443,6 +456,7 @@
       originalToast(`授權啟用成功：${licenseState.company}`);
     } catch (error) {
       licenseState = null;
+      licenseValidationMessage = error.message || '授權碼無法使用';
       q('#licenseMessage').textContent = error.message || '授權碼無法使用';
       originalToast(error.message || '授權碼無法使用');
     } finally {
@@ -698,7 +712,7 @@
             <img src="icon-192.png" alt="系統 Logo" class="login-logo">
             <h2>系統授權啟用</h2>
           </div>
-          <p class="license-intro">此網址需要公司授權才能使用。請向系統提供者取得專用授權碼。請使用一般瀏覽模式，不要使用私密瀏覽。</p>
+          <p class="license-intro">此網址需要公司授權才能使用。Safari 網頁版與主畫面 App 可能是不同保存區；若要兩邊使用，請使用不綁定設備的公司共用授權碼。請使用一般瀏覽模式，不要使用私密瀏覽。</p>
           <div id="licenseMessage" class="login-message">請輸入授權碼開始使用。</div>
           <div class="lock-notice"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span><br><small>如需綁定手機／平板，請把此識別碼提供給授權管理者。</small></div>
           <div class="login-input-row"><span class="login-input-icon" aria-hidden="true">🔑</span><input id="licenseCode" autocomplete="off" autocapitalize="characters" placeholder="請貼上公司專用授權碼" aria-label="授權碼"></div>
@@ -1721,7 +1735,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0312\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0313\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1809,7 +1823,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0312<br><small>授權改用獨立資料庫、Cookie 雙重備援；進入系統設定需輸入目前登入密碼</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0313<br><small>授權改用獨立資料庫、Cookie 雙重備援；進入系統設定需輸入目前登入密碼</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
@@ -1823,7 +1837,10 @@
     saveSettings();
     applyVoiceSettings();
     installEvents();
-    if (!licenseReady) { showLicenseGate(); return; }
+    if (!licenseReady) {
+      showLicenseGate(licenseValidationMessage ? `已讀到已保存的授權，但驗證未通過：${licenseValidationMessage}。請輸入可在此模式使用的授權碼。` : '尚未啟用授權，請輸入公司專用授權碼。');
+      return;
+    }
     await ensureAuth();
     await restoreSession();
   }
