@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0294
+/* 雙發付款管理系統 V8.3 RC Build 0295
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -1073,7 +1073,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0294\n資料庫版本：DB 3.0\n最後更新：2026/08/19`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0295\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1155,11 +1155,12 @@
   async function init() {
     injectUI();
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
+    if (typeof createOpeningBackup === 'function') await createOpeningBackup();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0294<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0295<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
-    if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/19<br>資料庫版本：DB 3.0';
+    if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
     settings.voiceErrors = settings.voiceErrors !== false;
     settings.voiceSuccess = settings.voiceSuccess !== false;
