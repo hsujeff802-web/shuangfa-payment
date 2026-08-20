@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0310
+/* 雙發付款管理系統 V8.3 Build 0311
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -364,7 +364,8 @@
       backup: settings.voiceBackup !== false,
       due: settings.voiceDue !== false,
       volume: Number(settings.voiceVolume ?? 0.9),
-      rate: Number(settings.voiceRate || 1)
+      rate: Number(settings.voiceRate || 1),
+      gender: ['auto', 'female', 'male'].includes(settings.voiceGender) ? settings.voiceGender : 'auto'
     };
   }
 
@@ -420,9 +421,21 @@
     }
   }
 
+  function voiceMatchesGender(voice, gender) {
+    if (gender === 'auto') return true;
+    const label = `${voice?.name || ''} ${voice?.voiceURI || ''}`.toLowerCase();
+    const female = /(female|woman|girl|女聲|女音|mei[-\s]?jia|sin[-\s]?ji|ting[-\s]?ting|tingting)/i.test(label);
+    const male = /(male|man|boy|男聲|男音|li[-\s]?mu|lisheng|li[-\s]?sheng)/i.test(label);
+    return gender === 'female' ? female : male;
+  }
+
   function getChineseVoice() {
     const voices = window.speechSynthesis?.getVoices?.() || [];
-    return voices.find(v => /zh[-_]TW/i.test(v.lang)) || voices.find(v => /^zh/i.test(v.lang)) || null;
+    const chinese = voices.filter(v => /^zh/i.test(v.lang));
+    const preferred = chinese.filter(v => /zh[-_]TW/i.test(v.lang));
+    const candidates = preferred.length ? preferred : chinese;
+    const gender = voiceSettings().gender;
+    return candidates.find(v => voiceMatchesGender(v, gender)) || candidates[0] || null;
   }
 
   function speakNow(text, kind = 'success', force = false) {
@@ -600,6 +613,8 @@
           <label class="toggle-row"><span>備份完成</span><input id="voiceBackup" type="checkbox"></label>
           <label class="toggle-row"><span>支票到期</span><input id="voiceDue" type="checkbox"></label>
         </div>
+        <label>語音性別<select id="voiceGender"><option value="auto">系統自動</option><option value="female">女聲</option><option value="male">男聲</option></select></label>
+        <p class="hint">iPad／手機會從已安裝的中文系統語音中選擇；若裝置沒有對應音色，會改用可用的中文聲音。</p>
         <label>語音音量 <b id="voiceVolumeText">90%</b><input id="voiceVolume" type="range" min="0" max="1" step="0.05"></label>
         <label>語音速度 <b id="voiceRateText">正常</b><input id="voiceRate" type="range" min="0.7" max="1.3" step="0.1"></label>
         <button id="testVoice" class="secondary full">測試語音：資料已備份完成</button>
@@ -1130,6 +1145,7 @@
     q('#voiceSuccess').checked = v.success;
     q('#voiceBackup').checked = v.backup;
     q('#voiceDue').checked = v.due;
+    q('#voiceGender').value = v.gender;
     q('#voiceVolume').value = v.volume;
     q('#voiceRate').value = v.rate;
     updateVoiceLabels();
@@ -1141,6 +1157,7 @@
     settings.voiceSuccess = q('#voiceSuccess').checked;
     settings.voiceBackup = q('#voiceBackup').checked;
     settings.voiceDue = q('#voiceDue').checked;
+    settings.voiceGender = q('#voiceGender').value;
     settings.voiceVolume = Number(q('#voiceVolume').value);
     settings.voiceRate = Number(q('#voiceRate').value);
     saveSettings();
@@ -1415,7 +1432,7 @@
       }
     };
 
-    ['voiceEnabled', 'voiceErrors', 'voiceSuccess', 'voiceBackup', 'voiceDue'].forEach(id => q(`#${id}`).addEventListener('change', saveVoiceSettings));
+    ['voiceEnabled', 'voiceErrors', 'voiceSuccess', 'voiceBackup', 'voiceDue', 'voiceGender'].forEach(id => q(`#${id}`).addEventListener('change', saveVoiceSettings));
     ['voiceVolume', 'voiceRate'].forEach(id => q(`#${id}`).addEventListener('input', saveVoiceSettings));
     q('#testVoice').onclick = () => {
       voiceReady = true;
@@ -1532,7 +1549,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0310\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0311\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1620,7 +1637,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0310<br><small>授權資料改用本機資料庫備援保存；進入系統設定需輸入目前登入密碼</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0311<br><small>授權資料改用本機資料庫備援保存；進入系統設定需輸入目前登入密碼</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
@@ -1628,6 +1645,7 @@
     settings.voiceSuccess = settings.voiceSuccess !== false;
     settings.voiceBackup = settings.voiceBackup !== false;
     settings.voiceDue = settings.voiceDue !== false;
+    settings.voiceGender = ['auto', 'female', 'male'].includes(settings.voiceGender) ? settings.voiceGender : 'auto';
     settings.voiceVolume = Number(settings.voiceVolume ?? 0.9);
     settings.voiceRate = Number(settings.voiceRate || 1);
     saveSettings();
