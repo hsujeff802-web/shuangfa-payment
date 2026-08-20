@@ -368,6 +368,9 @@ button:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
 .user-management-row b,.user-management-row small{display:block}
 .user-management-row small{margin-top:3px;color:#6a858a;font-size:13px}
 .user-management-row button{flex:0 0 auto;padding:9px 14px}
+.license-panel{max-width:520px}
+.license-intro{margin:8px 0 14px;color:#5f7b80;line-height:1.6}
+.license-panel .lock-notice{margin:12px 0;text-align:left;word-break:break-all}
 input[readonly]{background:#eef8f9;color:var(--muted);cursor:not-allowed}
 
 .toast{

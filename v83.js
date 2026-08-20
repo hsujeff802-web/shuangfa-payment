@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0308
+/* 雙發付款管理系統 V8.3 Build 0309
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -24,6 +24,11 @@
   let settingsAccessGranted = false;
   let logoutInProgress = false;
   let signatureFeedbackAllowed = false;
+  const LICENSE_KEY = 'shuangfa_v83_license_rc';
+  const DEVICE_KEY = 'shuangfa_v83_device_rc';
+  const LICENSE_SECRET = 'shuangfa-v83-offline-license-2026';
+  let licenseState = null;
+  let licenseReady = false;
 
   const q = selector => document.querySelector(selector);
   const qa = selector => [...document.querySelectorAll(selector)];
@@ -46,6 +51,150 @@
 
   function writeAuth(value) {
     localStorage.setItem(AUTH_KEY, JSON.stringify(value));
+  }
+
+  function getDeviceId() {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  }
+
+  function licensePayloadText(payload) {
+    return JSON.stringify({
+      company: String(payload.company || '').trim(),
+      plan: String(payload.plan || '永久'),
+      expiresAt: String(payload.expiresAt || ''),
+      device: String(payload.device || '')
+    });
+  }
+
+  function base64UrlEncode(text) {
+    return btoa(unescape(encodeURIComponent(text))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  function base64UrlDecode(text) {
+    const padded = String(text).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(text).length + 3) % 4);
+    return decodeURIComponent(escape(atob(padded)));
+  }
+
+  async function licenseDigest(text) {
+    if (crypto?.subtle) {
+      const data = new TextEncoder().encode(text);
+      const digest = await crypto.subtle.digest('SHA-256', data);
+      return [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 24).toUpperCase();
+    }
+    let hashValue = 2166136261;
+    for (const char of text) { hashValue ^= char.charCodeAt(0); hashValue = Math.imul(hashValue, 16777619); }
+    return (hashValue >>> 0).toString(16).padStart(8, '0').toUpperCase();
+  }
+
+  async function makeLicenseCode(payload) {
+    const text = licensePayloadText(payload);
+    const signature = await licenseDigest(`${LICENSE_SECRET}|${text}`);
+    return `SF1-${base64UrlEncode(text)}-${signature}`;
+  }
+
+  async function decodeLicenseCode(rawCode) {
+    const code = String(rawCode || '').trim();
+    const match = code.match(/^SF1-([A-Za-z0-9_-]+)-([A-Fa-f0-9]+)$/);
+    if (!match) throw new Error('授權碼格式不正確');
+    let payload;
+    try { payload = JSON.parse(base64UrlDecode(match[1])); } catch { throw new Error('授權碼內容無法讀取'); }
+    const expected = await makeLicenseCode(payload);
+    if (expected.toUpperCase() !== code.toUpperCase()) throw new Error('授權碼驗證失敗');
+    if (!payload.company) throw new Error('授權碼沒有公司名稱');
+    if (payload.expiresAt && (!Number.isFinite(Date.parse(payload.expiresAt)) || Date.parse(payload.expiresAt) <= Date.now())) throw new Error('此授權已經到期');
+    if (payload.device && payload.device !== getDeviceId()) throw new Error('此授權碼不是這台手機或平板的授權');
+    return { ...payload, code };
+  }
+
+  function hasExistingInstallation() {
+    return Boolean(localStorage.getItem(AUTH_KEY) || localStorage.getItem('shuangfa_v83_auth') || localStorage.getItem('shuangfa_payment_v52_rc'));
+  }
+
+  async function ensureLicense() {
+    const stored = (() => { try { return JSON.parse(localStorage.getItem(LICENSE_KEY) || 'null'); } catch { return null; } })();
+    if (stored?.legacy && stored.device === getDeviceId()) {
+      licenseState = stored;
+      return true;
+    }
+    if (stored?.code) {
+      try {
+        licenseState = await decodeLicenseCode(stored.code);
+        localStorage.setItem(LICENSE_KEY, JSON.stringify({ ...licenseState, activatedAt: stored.activatedAt || now() }));
+        return true;
+      } catch (error) {
+        console.warn('授權驗證失敗', error);
+        localStorage.removeItem(LICENSE_KEY);
+        licenseState = null;
+        return false;
+      }
+    }
+    // Build 0309 以前已在本機使用的裝置不鎖定，避免更新後影響既有資料。
+    if (hasExistingInstallation()) {
+      licenseState = { version: 1, company: settings?.systemName || '雙發付款管理系統', plan: '永久', expiresAt: '', device: getDeviceId(), legacy: true, code: 'LOCAL-LEGACY', activatedAt: now() };
+      localStorage.setItem(LICENSE_KEY, JSON.stringify(licenseState));
+      return true;
+    }
+    licenseState = null;
+    return false;
+  }
+
+  function licenseDescription() {
+    if (!licenseState) return '尚未啟用授權。請輸入公司專用授權碼。';
+    if (licenseState.legacy) return `公司：${licenseState.company}<br>授權期限：永久（既有本機安裝）`;
+    const expiry = licenseState.expiresAt ? new Date(licenseState.expiresAt).toLocaleDateString('zh-TW') : '永久';
+    return `公司：${licenseState.company}<br>授權方案：${licenseState.plan || '授權版'}<br>有效期限：${expiry}`;
+  }
+
+  function renderLicenseInfo() {
+    const status = q('#licenseStatus');
+    const device = q('#licenseDeviceId');
+    if (status) status.innerHTML = licenseDescription();
+    if (device) device.textContent = getDeviceId();
+  }
+
+  function showLicenseGate(message = '') {
+    const gate = q('#licenseGate');
+    if (!gate) return;
+    q('#loginGate')?.classList.add('hidden');
+    gate.classList.remove('hidden');
+    document.body.classList.add('login-locked');
+    renderLicenseInfo();
+    if (message) q('#licenseMessage').textContent = message;
+    setTimeout(() => q('#licenseCode')?.focus(), 100);
+  }
+
+  function hideLicenseGate() {
+    q('#licenseGate')?.classList.add('hidden');
+    if (!currentUser) document.body.classList.remove('login-locked');
+  }
+
+  async function activateLicense() {
+    const code = q('#licenseCode')?.value.trim();
+    if (!code) return toast('請輸入授權碼');
+    const button = q('#activateLicense');
+    if (button) { button.disabled = true; button.textContent = '驗證中…'; }
+    try {
+      licenseState = await decodeLicenseCode(code);
+      licenseState.activatedAt = now();
+      localStorage.setItem(LICENSE_KEY, JSON.stringify(licenseState));
+      licenseReady = true;
+      await ensureAuth();
+      hideLicenseGate();
+      showLogin();
+      renderLicenseInfo();
+      originalToast(`授權啟用成功：${licenseState.company}`);
+    } catch (error) {
+      licenseState = null;
+      q('#licenseMessage').textContent = error.message || '授權碼無法使用';
+      originalToast(error.message || '授權碼無法使用');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = '啟用系統授權'; }
+    }
   }
 
   async function ensureAuth() {
@@ -277,6 +426,19 @@
 
   function injectUI() {
     document.body.insertAdjacentHTML('afterbegin', `
+      <div id="licenseGate" class="login-gate hidden" aria-modal="true" role="dialog">
+        <div class="login-panel license-panel">
+          <div class="login-brand">
+            <img src="icon-192.png" alt="系統 Logo" class="login-logo">
+            <h2>系統授權啟用</h2>
+          </div>
+          <p class="license-intro">此網址需要公司授權才能使用。請向系統提供者取得專用授權碼。</p>
+          <div id="licenseMessage" class="login-message">請輸入授權碼開始使用。</div>
+          <div class="lock-notice"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span><br><small>如需綁定手機／平板，請把此識別碼提供給授權管理者。</small></div>
+          <div class="login-input-row"><span class="login-input-icon" aria-hidden="true">🔑</span><input id="licenseCode" autocomplete="off" autocapitalize="characters" placeholder="請貼上公司專用授權碼" aria-label="授權碼"></div>
+          <button id="activateLicense" class="primary full">啟用系統授權</button>
+        </div>
+      </div>
       <div id="loginGate" class="login-gate hidden" aria-modal="true" role="dialog">
         <div class="login-panel">
           <div class="login-brand">
@@ -321,6 +483,14 @@
     q('.home-grid').insertAdjacentHTML('beforeend', '<button id="homeRevisionCard" class="home-card"><b>修改紀錄</b><span>原始資料鎖定，查看所有更正</span></button>');
     q('#detailImages').insertAdjacentHTML('beforebegin', '<div id="detailRevisionHistory"></div>');
     q('#editPaymentBtn').textContent = '新增修改紀錄';
+    q('#systemInfoCard')?.insertAdjacentHTML('afterend', `
+      <div class="card" id="licenseInfoCard">
+        <h3>🔑 軟體授權</h3>
+        <div id="licenseStatus" class="backup-status"></div>
+        <p class="hint">新手機或平板需要公司專用授權碼才能使用。授權資料只保存在本機，不會上傳付款內容。</p>
+        <div class="backup-status"><b>本機設備識別碼</b><br><span id="licenseDeviceId"></span></div>
+        <button id="copyLicenseDevice" class="secondary full">複製設備識別碼</button>
+      </div>`);
 
     q('#settings').insertAdjacentHTML('beforebegin', `
       <section id="revisions" class="page">
@@ -400,6 +570,7 @@
   }
 
   function showLogin() {
+    if (!licenseReady || !licenseState) { showLicenseGate('尚未啟用授權，請先輸入公司專用授權碼。'); return; }
     syncLoginBrand();
     document.body.classList.add('login-locked');
     settingsAccessGranted = false;
@@ -524,6 +695,7 @@
   }
 
   async function login() {
+    if (!licenseReady || !licenseState) { showLicenseGate('尚未啟用授權，請先輸入公司專用授權碼。'); return; }
     // 必須在使用者按下登入的同一個操作中啟用播放，避免 iPhone／iPad 偶爾阻擋音效。
     unlockPlayback();
     const currentTime = Date.now();
@@ -814,6 +986,7 @@
 
   function enforceLoginGate() {
     if (!q('#loginGate')) return;
+    if (!licenseReady || !licenseState) { showLicenseGate(); return; }
     if (!currentUser) {
       settingsAccessGranted = false;
       showLogin();
@@ -833,6 +1006,7 @@
   });
 
   async function restoreSession() {
+    if (!licenseReady || !licenseState) { showLicenseGate(); return; }
     try {
       currentUser = JSON.parse(sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY) || 'null');
     } catch {
@@ -1094,6 +1268,13 @@
   }
 
   function installEvents() {
+    q('#activateLicense').onclick = activateLicense;
+    q('#licenseCode').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); activateLicense(); } });
+    q('#copyLicenseDevice').onclick = async () => {
+      const id = getDeviceId();
+      try { await navigator.clipboard.writeText(id); originalToast('設備識別碼已複製'); }
+      catch { prompt('請複製設備識別碼：', id); }
+    };
     q('#loginSubmit').onclick = login;
     q('#loginCode').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); q('#loginPassword').focus(); } });
     q('#loginPassword').addEventListener('keydown', event => { if (event.key === 'Enter') login(); });
@@ -1264,7 +1445,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0308\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0309\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1348,9 +1529,11 @@
     injectUI();
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     if (typeof createOpeningBackup === 'function') await createOpeningBackup();
+    licenseReady = await ensureLicense();
+    renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0308<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0309<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
@@ -1363,6 +1546,7 @@
     saveSettings();
     applyVoiceSettings();
     installEvents();
+    if (!licenseReady) { showLicenseGate(); return; }
     await ensureAuth();
     await restoreSession();
   }
