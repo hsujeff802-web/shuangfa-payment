@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0314
+/* 雙發付款管理系統 V8.3 Build 0315
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -32,6 +32,7 @@
   const DEVICE_COOKIE = 'shuangfa_v83_device_rc';
   const LICENSE_DB_NAME = 'shuangfa_license_v1_rc';
   const LICENSE_DB_STORE = 'license';
+  const LICENSE_ENABLED = false;
   const LICENSE_CACHE_NAME = 'shuangfa-payment-license-v1';
   const LICENSE_CODE_KEY = 'shuangfa_v83_license_code_rc';
   const LICENSE_CODE_COOKIE = 'shuangfa_v83_license_code_rc';
@@ -430,6 +431,11 @@
   }
 
   async function ensureLicense() {
+    if (!LICENSE_ENABLED) {
+      licenseValidationMessage = '';
+      licenseState = { version: 1, company: settings?.systemName || '雙發付款管理系統', plan: '單機版', expiresAt: '', device: '', legacy: true, code: 'AUTH-DISABLED', activatedAt: now() };
+      return true;
+    }
     licenseValidationMessage = '';
     await ensureStableDeviceId();
     const candidates = [];
@@ -474,6 +480,7 @@
   }
 
   function licenseDescription() {
+    if (!LICENSE_ENABLED) return '單機版：授權門禁已關閉。登入帳號與密碼仍然有效。';
     if (!licenseState) return '尚未啟用授權。請輸入公司專用授權碼。';
     if (licenseState.legacy) return `公司：${licenseState.company}<br>授權期限：永久（既有本機安裝）`;
     const expiry = licenseState.expiresAt ? new Date(licenseState.expiresAt).toLocaleDateString('zh-TW') : '永久';
@@ -481,6 +488,7 @@
   }
 
   function renderLicenseInfo() {
+    if (!LICENSE_ENABLED) return;
     const status = q('#licenseStatus');
     const device = q('#licenseDeviceId');
     if (status) status.innerHTML = licenseDescription();
@@ -489,6 +497,7 @@
   }
 
   function showLicenseGate(message = '') {
+    if (!LICENSE_ENABLED) return false;
     const gate = q('#licenseGate');
     if (!gate) return;
     q('#loginGate')?.classList.add('hidden');
@@ -505,6 +514,7 @@
   }
 
   async function activateLicense() {
+    if (!LICENSE_ENABLED) return;
     const code = q('#licenseCode')?.value.trim();
     if (!code) return toast('請輸入授權碼');
     const button = q('#activateLicense');
@@ -1801,7 +1811,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0314\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0315\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1883,13 +1893,18 @@
 
   async function init() {
     injectUI();
+    if (!LICENSE_ENABLED) {
+      q('#licenseGate')?.classList.add('hidden');
+      q('#licenseInfoCard')?.classList.add('hidden');
+      document.body.classList.remove('login-locked');
+    }
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     if (typeof createOpeningBackup === 'function') await createOpeningBackup();
     licenseReady = await ensureLicense();
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0314<br><small>授權採獨立資料庫、快取、原始授權碼與 Cookie 多重保存；進入系統設定需輸入目前登入密碼</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0315<br><small>單機版已關閉授權碼門禁；登入帳號、密碼與系統設定密碼保留</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;

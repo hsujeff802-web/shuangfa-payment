@@ -1,7 +1,7 @@
 {
-  "name": "雙發付款管理系統 V8.3 Build 0314・手機授權持久保存版",
+  "name": "雙發付款管理系統 V8.3 Build 0315・單機免授權正式版",
   "short_name": "雙發付款",
-  "start_url": "./index.html?v=83411",
+  "start_url": "./index.html?v=83412",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f1f9fa",
