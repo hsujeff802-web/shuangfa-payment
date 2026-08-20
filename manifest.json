@@ -1,7 +1,7 @@
 {
-  "name": "雙發付款管理系統 V8.3 Build 0303・系統設定密碼保護版",
+  "name": "雙發付款管理系統 V8.3 Build 0305・系統設定密碼保護版",
   "short_name": "雙發付款",
-  "start_url": "./index.html?v=83400",
+  "start_url": "./index.html?v=83402",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f1f9fa",
