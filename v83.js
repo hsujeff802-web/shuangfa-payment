@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 RC Build 0295
+/* 雙發付款管理系統 V8.3 Build 0303
    登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -15,9 +15,14 @@
   let idleTimer = null;
   let voiceReady = false;
   let pendingVoice = [];
+  const scheduledVoiceTimers = new Set();
+  let voiceGeneration = 0;
   let audioContext = null;
+  let activeAudio = null;
+  let activeAudioCancel = null;
   let editingPaymentId = '';
   let settingsAccessGranted = false;
+  let logoutInProgress = false;
 
   const q = selector => document.querySelector(selector);
   const qa = selector => [...document.querySelectorAll(selector)];
@@ -135,8 +140,23 @@
     return v.success;
   }
 
+  function signatureVoiceBlocked() {
+    return !!document.querySelector('#signature.active');
+  }
+
+  function cancelVoicePlayback() {
+    voiceGeneration += 1;
+    for (const timer of scheduledVoiceTimers) clearTimeout(timer);
+    scheduledVoiceTimers.clear();
+    pendingVoice = [];
+    try { window.speechSynthesis?.cancel?.(); } catch {}
+    try { activeAudioCancel?.(); } catch {}
+    activeAudio = null;
+    activeAudioCancel = null;
+  }
+
   function playTone(kind = 'success') {
-    if (!voiceAllowed(kind)) return;
+    if (signatureVoiceBlocked() || !voiceAllowed(kind)) return;
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return;
@@ -169,7 +189,7 @@
   }
 
   function speakNow(text, kind = 'success', force = false) {
-    if (!text || (!force && !voiceAllowed(kind))) return false;
+    if (signatureVoiceBlocked() || !text || (!force && !voiceAllowed(kind))) return false;
     playTone(kind);
     if (!('speechSynthesis' in window)) return false;
     try {
@@ -189,9 +209,11 @@
   }
 
   function speak(text, kind = 'success', force = false) {
-    if (!force && !voiceAllowed(kind)) return;
+    if (signatureVoiceBlocked() || (!force && !voiceAllowed(kind))) return;
+    const generation = voiceGeneration;
     const isWorkCompletion = /完成|已儲存|已備份|已清除|已修改|壓縮完成|還原完成/.test(String(text || ''));
     const play = () => {
+      if (generation !== voiceGeneration || signatureVoiceBlocked()) return;
       if (!voiceReady && !force) {
         pendingVoice.push({ text, kind });
         return;
@@ -199,12 +221,16 @@
       speakNow(text, kind, force);
     };
     // 儲存、備份、完成工作後先停一秒，再播放中文語音。
-    if (isWorkCompletion && (kind === 'success' || kind === 'backup')) setTimeout(play, 1000);
+    if (isWorkCompletion && (kind === 'success' || kind === 'backup')) {
+      const timer = setTimeout(() => { scheduledVoiceTimers.delete(timer); play(); }, 1000);
+      scheduledVoiceTimers.add(timer);
+    }
     else play();
   }
 
   function unlockVoice() {
     voiceReady = true;
+    if (signatureVoiceBlocked()) { pendingVoice = []; return; }
     const item = pendingVoice.shift();
     if (item) speakNow(item.text, item.kind);
   }
@@ -223,6 +249,7 @@
   }
 
   window.shuangfaSpeak = speak;
+  window.shuangfaCancelVoice = cancelVoicePlayback;
 
   function injectUI() {
     document.body.insertAdjacentHTML('afterbegin', `
@@ -340,21 +367,53 @@
   function showLogin() {
     syncLoginBrand();
     document.body.classList.add('login-locked');
-    q('#loginGate').classList.remove('hidden');
+    settingsAccessGranted = false;
+    const gate = q('#loginGate');
+    if (!gate) return;
+    gate.classList.remove('hidden');
     setTimeout(() => { const code=q('#loginCode'); const password=q('#loginPassword'); (code && !code.value ? code : password).focus(); }, 100);
   }
 
   function hideLogin() {
-    q('#loginGate').classList.add('hidden');
+    q('#loginGate')?.classList.add('hidden');
     document.body.classList.remove('login-locked');
   }
 
+  function setLogoutBusy(busy) {
+    qa('#logoutBtn, #homeLogoutBtn').forEach(button => {
+      if (busy) {
+        if (!button.dataset.restoreHtml) button.dataset.restoreHtml = button.innerHTML;
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        button.innerHTML = button.id === 'homeLogoutBtn'
+          ? '<b>📦 備份中…</b><span>請稍候，完成後自動登出</span>'
+          : '📦 備份中…';
+      } else {
+        const restore = button.dataset.restoreHtml;
+        if (restore) {
+          button.innerHTML = restore;
+          delete button.dataset.restoreHtml;
+        }
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+    });
+  }
+
+  async function requireInternalBackup(reason) {
+    if (typeof window.shuangfaInternalBackup !== 'function') {
+      throw new Error('完整內部備份功能尚未就緒');
+    }
+    return window.shuangfaInternalBackup(reason);
+  }
+
   async function idleBackupAndLogout() {
-    if (!currentUser) return;
+    if (!currentUser || logoutInProgress) return;
+    logoutInProgress = true;
+    setLogoutBusy(true);
     try {
       if (typeof saveAudit === 'function') saveAudit('閒置自動登出');
-      if (typeof window.shuangfaInternalBackup === 'function') await window.shuangfaInternalBackup('閒置自動登出');
-      else if (typeof writeToIndexedDB === 'function') await writeToIndexedDB(db);
+      await requireInternalBackup('閒置自動登出');
       originalToast('閒置 30 分鐘，已完成內部備份，準備自動登出');
       await speakPromise('已閒置 30 分鐘，資料已備份完成，系統即將自動登出。', 'backup');
       await new Promise(resolve => setTimeout(resolve, 180));
@@ -365,6 +424,9 @@
       originalToast('自動備份失敗，系統暫不登出，請手動備份');
       speak('自動備份失敗，系統暫不登出。', 'error', true);
       resetIdleTimer();
+    } finally {
+      logoutInProgress = false;
+      setLogoutBusy(false);
     }
   }
 
@@ -402,7 +464,7 @@
     const code = q('#loginCode').value.trim();
     const password = q('#loginPassword').value;
     const auth = await ensureAuth();
-    const user = auth.users.find(x => x.enabled !== false && x.code.toLowerCase() === code.toLowerCase());
+    const user = auth.users.find(x => x.enabled !== false && String(x.code || '').toLowerCase() === code.toLowerCase());
 
     if (!user || user.passwordHash !== await hash(password)) {
       failedAttempts += 1;
@@ -454,20 +516,37 @@
   }
 
   function playAudioData(dataUrl) {
-    if (!dataUrl) return Promise.resolve(false);
+    if (!dataUrl || signatureVoiceBlocked()) return Promise.resolve(false);
+    try { activeAudioCancel?.(); } catch {}
     return new Promise(resolve => {
       try {
-        const audio = new Audio(dataUrl);
+        const audio = new Audio();
+        activeAudio = audio;
         audio.preload = 'auto';
         audio.playsInline = true;
         audio.setAttribute('playsinline', '');
         audio.volume = voiceSettings().volume;
         let timer = null;
-        const done = result => { if (timer) clearTimeout(timer); audio.onended = audio.onerror = null; resolve(result); };
+        let finished = false;
+        const done = result => {
+          if (finished) return;
+          finished = true;
+          if (timer) clearTimeout(timer);
+          audio.onended = audio.onerror = audio.onabort = null;
+          if (activeAudio === audio) {
+            activeAudio = null;
+            activeAudioCancel = null;
+          }
+          resolve(result);
+        };
+        activeAudioCancel = () => { try { audio.pause(); audio.currentTime = 0; } catch {} done(false); };
         audio.onended = () => done(true);
         audio.onerror = () => { console.warn('自訂音樂播放失敗'); done(false); };
+        audio.onabort = () => done(false);
         // 某些 iOS 版本不回報 ended/error，避免登入流程卡住。
         timer = setTimeout(() => done(false), 15000);
+        audio.src = dataUrl;
+        audio.load();
         const result = audio.play();
         if (result?.catch) result.catch(() => done(false));
       } catch { resolve(false); }
@@ -476,7 +555,7 @@
 
   function speakPromise(text, kind = 'success', force = false) {
     return new Promise(resolve => {
-      if (!text || !('speechSynthesis' in window) || (!force && !voiceAllowed(kind))) return resolve(false);
+      if (signatureVoiceBlocked() || !text || !('speechSynthesis' in window) || (!force && !voiceAllowed(kind))) return resolve(false);
       let finished = false;
       let timer = null;
       const finish = result => {
@@ -561,19 +640,6 @@
     q('#logoutPlayMode').value = a.logoutPlayMode;
     q('#loginMusicName').textContent = a.loginMusicName ? `目前登入音樂：${a.loginMusicName}` : '尚未選擇登入音樂';
     q('#logoutMusicName').textContent = a.logoutMusicName ? `目前登出音樂：${a.logoutMusicName}` : '尚未選擇登出音樂';
-  }
-
-  function showLogoutChoice() {
-    return new Promise(resolve => {
-      const old = q('#logoutChoiceOverlay'); if (old) old.remove();
-      const overlay = document.createElement('div');
-      overlay.id = 'logoutChoiceOverlay';
-      overlay.className = 'logout-choice-overlay';
-      overlay.innerHTML = `<div class="logout-choice-panel"><h3>登出前必須備份</h3><p class="hint">系統會先將完整付款資料、照片與簽名自動保存到手機內部資料庫，備份完成後才會登出。登出時不會自動開啟下載預覽頁。</p><button data-choice="backup" class="primary full">📦 完整備份後登出</button><button data-choice="cancel" class="secondary full">取消</button></div>`;
-      document.body.appendChild(overlay);
-      overlay.querySelectorAll('[data-choice]').forEach(btn => btn.onclick = () => { const value=btn.dataset.choice; overlay.remove(); resolve(value); });
-      overlay.onclick = event => { if (event.target === overlay) { overlay.remove(); resolve('cancel'); } };
-    });
   }
 
   async function playWindowsXPStyleShutdownSound() {
@@ -666,10 +732,32 @@
     currentUser = null;
     settingsAccessGranted = false;
     clearTimeout(idleTimer);
+    history = ['home'];
+    if (typeof show === 'function') show('home', false);
     renderUser();
     q('#loginPassword').value = '';
     showLogin();
   }
+
+  function enforceLoginGate() {
+    if (!q('#loginGate')) return;
+    if (!currentUser) {
+      settingsAccessGranted = false;
+      showLogin();
+      return;
+    }
+    resetIdleTimer();
+  }
+
+  window.addEventListener('pageshow', enforceLoginGate);
+  window.addEventListener('popstate', enforceLoginGate);
+  window.addEventListener('storage', event => {
+    if (event.key !== SESSION_KEY || event.newValue) return;
+    currentUser = null;
+    settingsAccessGranted = false;
+    clearTimeout(idleTimer);
+    showLogin();
+  });
 
   async function restoreSession() {
     try {
@@ -937,29 +1025,29 @@
     q('#loginCode').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); q('#loginPassword').focus(); } });
     q('#loginPassword').addEventListener('keydown', event => { if (event.key === 'Enter') login(); });
     const backupAndLogout = async () => {
-      // 先在登出按鍵的點擊事件中取得播放授權，再等待完整備份。
+      if (!currentUser || logoutInProgress) return;
+      logoutInProgress = true;
+      setLogoutBusy(true);
+      // 按下登出後直接取得播放授權並開始內部備份，不再要求第二次確認。
       unlockPlayback();
-      const choice = await showLogoutChoice();
-      if (choice === 'cancel') return;
-      if (choice !== 'backup') return;
       if (typeof window.shuangfaStopSignatureVoice === 'function') window.shuangfaStopSignatureVoice();
-      if (choice === 'backup') {
-        try {
-          if (currentUser) saveAudit('登出');
-          if (typeof window.shuangfaInternalBackup === 'function') await window.shuangfaInternalBackup('登出前完整備份');
-          else if (typeof writeToIndexedDB === 'function') await writeToIndexedDB(db);
-          originalToast('完整內部備份已完成，準備登出');
-          await speakPromise('資料已備份完成。', 'backup');
-          await new Promise(resolve => setTimeout(resolve, 180));
-        } catch (error) {
-          console.error('登出備份失敗', error);
-          originalToast('備份失敗，尚未登出');
-          speak('備份失敗，系統尚未登出。', 'error', true);
-          return;
-        }
+      try {
+        originalToast('正在完成內部備份，請稍候…');
+        if (currentUser) saveAudit('登出');
+        await requireInternalBackup('登出前完整備份');
+        originalToast('完整內部備份已完成，準備登出');
+        await speakPromise('資料已備份完成。', 'backup');
+        await new Promise(resolve => setTimeout(resolve, 180));
+        await playLogoutSound();
+        logout(false, true);
+      } catch (error) {
+        console.error('登出備份失敗', error);
+        originalToast('備份失敗，尚未登出');
+        speak('備份失敗，系統尚未登出。', 'error', true);
+      } finally {
+        logoutInProgress = false;
+        setLogoutBusy(false);
       }
-      await playLogoutSound();
-      logout(false, true);
     };
     q('#logoutBtn').onclick = backupAndLogout;
     const homeLogoutBtn = q('#homeLogoutBtn');
@@ -1073,7 +1161,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 RC Build 0295\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0303\n資料庫版本：DB 3.0\n最後更新：2026/08/20`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -1158,7 +1246,7 @@
     if (typeof createOpeningBackup === 'function') await createOpeningBackup();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 RC Build 0295<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0303<br><small>進入系統設定需輸入目前登入密碼；登入帳號與密碼仍可在登入後修改</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
