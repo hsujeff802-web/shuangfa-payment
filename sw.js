@@ -1,10 +1,10 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0321-cloud-license';
+const CACHE_NAME='shuangfa-payment-v8.3-cache-83422';
 const LICENSE_CACHE_NAME='shuangfa-payment-license-v1';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83421',
-  './cloud-config.js?v=83421','./app.js?v=83421','./v83.js?v=83421',
+  './styles.css?v=83422',
+  './cloud-config.js?v=83422','./app.js?v=83422','./v83.js?v=83422',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
@@ -33,13 +33,13 @@ self.addEventListener('fetch',event=>{
 
   if(event.request.mode==='navigate'){
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request,{cache:'no-store'})
         .then(response=>{
           const copy=response.clone();
           caches.open(CACHE_NAME).then(cache=>cache.put('./index.html',copy));
           return response;
         })
-        .catch(()=>caches.match('./index.html'))
+        .catch(()=>caches.match('./index.html',{ignoreSearch:true}))
     );
     return;
   }
