@@ -1,4 +1,4 @@
-/* 雙發付款管理系統 V8.3 Build 0321
+/* 雙發付款管理系統 V8.3 Build 0322
    雲端授權／裝置綁定、登入權限、已付款鎖定、修改紀錄、智慧語音提醒 */
 (() => {
   'use strict';
@@ -544,7 +544,7 @@
           p_device_id: deviceId,
           p_device_label: cloudDeviceLabel(),
           p_platform: String(navigator.platform || navigator.userAgent || '').slice(0, 120),
-          p_app_version: 'V8.3 Build 0321'
+          p_app_version: 'V8.3 Build 0322'
         })
       });
       body = await response.json().catch(() => null);
@@ -607,7 +607,7 @@
           p_device_id: id,
           p_device_label: cloudDeviceLabel(),
           p_platform: String(navigator.platform || navigator.userAgent || '').slice(0, 120),
-          p_app_version: 'V8.3 Build 0321'
+          p_app_version: 'V8.3 Build 0322'
         })
       });
       body = await response.json().catch(() => null);
@@ -2055,7 +2055,7 @@
 
     const copySystemInfo = q('#copySystemInfo');
     if (copySystemInfo) copySystemInfo.onclick = async () => {
-      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0321\n資料庫版本：DB 3.0\n最後更新：2026/08/20\n雲端授權：啟用；付款資料仍只保存於本機`;
+      const text = `${typeof getSystemName === 'function' ? getSystemName() : '雙發付款管理系統'}\nV8.3 Build 0322\n資料庫版本：DB 3.0\n最後更新：2026/08/20\n個人單機版；授權門禁未啟用，付款資料仍只保存於本機`;
       try {
         await navigator.clipboard.writeText(text);
         originalToast('系統資訊已複製');
@@ -2148,7 +2148,7 @@
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
-    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0321<br><small>雲端授權／裝置綁定測試版；付款資料、照片、簽名與備份仍只保存在本機</small>';
+    if (systemInfo) systemInfo.innerHTML = '<b>目前版本</b><br>V8.3 Build 0322<br><small>個人單機版；付款資料、照片、簽名與備份仍只保存在本機</small>';
     const systemInfoHint = q('#systemInfoCard .hint');
     if (systemInfoHint) systemInfoHint.innerHTML = '最後更新：2026/08/20<br>資料庫版本：DB 3.0';
     settings.voiceEnabled = settings.voiceEnabled !== false;
