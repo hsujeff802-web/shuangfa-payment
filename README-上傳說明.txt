@@ -1,4 +1,6 @@
-雙發付款管理系統 V8.3 Build 0323
+雙發付款管理系統 V8.3 Build 0324
+
+本版為雲端授權主版本，包含正式授權與測試版10筆功能。
 
 本版修正：
 1. 已綁定裝置若遺失本機授權快取，會用裝置識別碼向雲端恢復，不必再次輸入授權碼。
@@ -15,7 +17,7 @@
 4. 將解壓縮後的檔案全部選取並拖入（要放在 repository 根目錄，不要再包一層資料夾）。
 5. Commit changes 直接提交到 main。
 6. 等 GitHub Pages 部署完成後，用一般 Safari 開啟：
-   https://hsujeff802-web.github.io/shuangfa-payment/?v=83423
+   https://hsujeff802-web.github.io/shuangfa-payment/?v=83424
 7. 第一次開啟要保持網路；若使用主畫面 App，先用 Safari 開一次新版網址，再回到主畫面 App。
 
 注意：cloud-config.js 內的 Supabase 公開設定已保留；不要把資料庫密碼或 service_role key 上傳到 GitHub。
