@@ -2193,6 +2193,8 @@
       showLicenseGate(licenseValidationMessage || '尚未啟用授權，請連網輸入公司專用授權碼。');
       return;
     }
+    // 啟動時已恢復授權就直接收起授權畫面；不應要求使用者再按一次「檢查授權保存」。
+    hideLicenseGate();
     await ensureAuth();
     await restoreSession();
   }
