@@ -2178,6 +2178,11 @@
     saveSettings();
     applyVoiceSettings();
     installEvents();
+    // 若啟動時第一次雲端恢復遇到時序或短暫網路問題，
+    // 自動執行和「檢查授權保存」相同的恢復流程，不要求使用者再按一次。
+    if (!licenseReady && LICENSE_ENABLED) {
+      await checkLicenseStorage(null);
+    }
     if (!licenseReady) {
       showLicenseGate(licenseValidationMessage || '尚未啟用授權，請連網輸入公司專用授權碼。');
       return;
