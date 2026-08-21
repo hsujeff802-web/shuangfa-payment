@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#159aa3">
+  <title>雙發｜授權碼產生器</title>
+  <link rel="stylesheet" href="license-generator.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="page-header">
+      <div class="brand-mark" aria-hidden="true">雙發</div>
+      <div>
+        <p class="eyebrow">管理員工具</p>
+        <h1>授權碼產生器</h1>
+        <p class="subtitle">手機即可建立新的雲端授權碼</p>
+      </div>
+    </header>
+
+    <section class="notice notice-info">
+      <strong>使用提醒</strong>
+      <p>這是授權管理頁，不是付款資料頁。產生後請立即複製授權碼並交給使用者；原始授權碼只會顯示這一次。</p>
+    </section>
+
+    <section class="panel" id="adminPanel">
+      <div class="section-title"><span>🔐</span><h2>管理員驗證</h2></div>
+      <p class="muted">請輸入產生器管理密碼。密碼只在送出時使用，不會保存到手機。</p>
+      <label class="field">
+        <span>管理員密碼</span>
+        <input id="adminPassword" type="password" autocomplete="current-password" placeholder="請輸入管理員密碼">
+      </label>
+      <button class="button button-primary" id="unlockButton" type="button">開始使用產生器</button>
+      <p class="status" id="adminStatus" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel hidden" id="generatorPanel">
+      <div class="section-title"><span>🗝️</span><h2>建立授權碼</h2></div>
+      <form id="licenseForm">
+        <label class="field">
+          <span>公司名稱</span>
+          <input id="companyName" type="text" value="雙發水電五金材料行" maxlength="120" required>
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>授權方案</span>
+            <select id="plan">
+              <option value="測試版">測試版</option>
+              <option value="正式版">正式版</option>
+              <option value="自訂版">自訂版</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>裝置數量上限</span>
+            <input id="maxDevices" type="number" min="1" max="1000" value="10" required>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>有效期限</span>
+            <select id="term">
+              <option value="custom">指定日期</option>
+              <option value="perpetual">永久</option>
+              <option value="1個月">1 個月</option>
+              <option value="3個月">3 個月</option>
+              <option value="6個月">6 個月</option>
+              <option value="1年">1 年</option>
+              <option value="2年">2 年</option>
+            </select>
+          </label>
+          <label class="field" id="expiryField">
+            <span>到期日</span>
+            <input id="expiryDate" type="date" value="2026-09-19">
+          </label>
+        </div>
+
+        <label class="field">
+          <span>離線寬限天數</span>
+          <input id="offlineGraceDays" type="number" min="0" max="3650" value="30" required>
+          <small>連線暫時中斷時，允許已驗證裝置繼續使用的天數。</small>
+        </label>
+
+        <div class="form-actions">
+          <button class="button button-primary" id="generateButton" type="submit">產生授權碼</button>
+          <button class="button button-secondary" id="clearButton" type="button">清除結果</button>
+        </div>
+      </form>
+      <p class="status" id="formStatus" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel result-panel hidden" id="resultPanel">
+      <div class="section-title"><span>✅</span><h2>授權碼已建立</h2></div>
+      <p class="muted">請先按「複製授權碼」，再把它貼到使用者的系統授權畫面。</p>
+      <div class="code-box" id="licenseCode" aria-label="新授權碼"></div>
+      <button class="button button-copy" id="copyButton" type="button">複製授權碼</button>
+      <dl class="details" id="licenseDetails"></dl>
+      <p class="warning">注意：資料庫只保存授權碼雜湊值；離開此頁後無法從雲端找回這組原始授權碼。</p>
+    </section>
+
+    <footer class="page-footer">
+      <a href="./">返回雙發付款管理系統</a>
+      <span>V8.3 Build 0321</span>
+    </footer>
+  </main>
+
+  <script src="cloud-config.js"></script>
+  <script src="license-generator.js"></script>
+</body>
+</html>
