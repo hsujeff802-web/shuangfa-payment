@@ -322,7 +322,10 @@
       }
       if (LICENSE_ENABLED && licenseState?.code && navigator.onLine !== false) {
         try {
-          const refreshed = licenseState?.recovery === 'device'
+          // 已保存的狀態只要有裝置識別碼，就代表這台裝置已綁定；
+          // 用裝置恢復即可，不能再用原始授權碼重新啟用，否則會重複計入裝置名額。
+          const useDeviceRecovery = Boolean(licenseState?.device || licenseState?.recovery === 'device');
+          const refreshed = useDeviceRecovery
             ? await callCloudLicenseByDevice(licenseState.device || getDeviceId())
             : await callCloudLicense(licenseState.code);
           refreshed.activatedAt = licenseState.activatedAt || refreshed.activatedAt || now();
@@ -703,7 +706,10 @@
 
     if (navigator.onLine !== false) {
       try {
-        licenseState = stored.recovery === 'device'
+        // 正常啟用後保存的舊格式也有 device，但不一定有 recovery 標記；
+        // 只要有 device 就必須走裝置恢復，避免每次開啟都重新啟用授權。
+        const useDeviceRecovery = Boolean(stored.device || stored.recovery === 'device');
+        licenseState = useDeviceRecovery
           ? await callCloudLicenseByDevice(stored.device || getDeviceId())
           : await callCloudLicense(stored.code);
         licenseState.activatedAt = stored.activatedAt || licenseState.activatedAt || now();
