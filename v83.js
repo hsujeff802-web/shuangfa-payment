@@ -3,6 +3,9 @@
 (() => {
   'use strict';
 
+  // 啟動期間先鎖住授權頁，等授權資料恢復完成後再顯示正確的登入畫面。
+  document.body?.classList.add('license-starting');
+
   const AUTH_KEY = 'shuangfa_v83_auth_rc';
   const SESSION_KEY = 'shuangfa_v83_session_rc';
   const DEFAULT_CODE = 'admin';
@@ -773,6 +776,7 @@
 
   function showLicenseGate(message = '') {
     if (!LICENSE_ENABLED) return false;
+    if (document.body?.classList.contains('license-starting')) return false;
     if (licenseReady && licenseState) {
       hideLicenseGate();
       return false;
@@ -1626,6 +1630,7 @@
 
   function enforceLoginGate() {
     if (!q('#loginGate')) return;
+    if (document.body?.classList.contains('license-starting')) return;
     if (!licenseReady || !licenseState) { showLicenseGate(); return; }
     if (!currentUser) {
       settingsAccessGranted = false;
@@ -2197,11 +2202,13 @@
     applyVoiceSettings();
     installEvents();
     if (!licenseReady) {
+      document.body?.classList.remove('license-starting');
       showLicenseGate(licenseValidationMessage || '尚未啟用授權，請連網輸入公司專用授權碼。');
       return;
     }
     // 啟動時已恢復授權就直接收起授權畫面；不應要求使用者再按一次「檢查授權保存」。
     hideLicenseGate();
+    document.body?.classList.remove('license-starting');
     await ensureAuth();
     await restoreSession();
   }

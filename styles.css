@@ -498,6 +498,8 @@ input[readonly]{background:#eef8f9;color:var(--muted);cursor:not-allowed}
 .login-message{min-height:24px;margin-top:10px;text-align:center;color:#a33;font-weight:800}
 body.login-locked{overflow:hidden}
 body.login-locked>.topbar,body.login-locked>main,body.login-locked>#photoViewer{visibility:hidden!important;pointer-events:none!important}
+/* 啟動讀取雲端授權時，避免 pageshow 事件先閃出授權碼畫面 */
+body.license-starting #licenseGate{display:none!important}
 @media(max-width:520px){
   .login-gate{padding-left:14px;padding-right:14px}
   .login-panel{padding:22px 18px 20px;border-radius:22px}
