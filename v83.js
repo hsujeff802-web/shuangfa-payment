@@ -315,6 +315,11 @@
   async function checkLicenseStorage(button) {
     if (button) { button.disabled = true; button.textContent = '檢查中…'; }
     try {
+      // 啟動時若先顯示授權畫面，但保存資料仍在瀏覽器中，先重新執行
+      // 裝置綁定恢復；不要要求使用者再次貼上授權碼。
+      if (LICENSE_ENABLED && (!licenseReady || !licenseState)) {
+        licenseReady = await ensureLicense();
+      }
       if (LICENSE_ENABLED && licenseState?.code && navigator.onLine !== false) {
         try {
           const refreshed = licenseState?.recovery === 'device'
@@ -336,7 +341,14 @@
       }
       await renderLicenseStorageStatus();
       const result = await inspectLicenseStorage();
-      originalToast(result.valid && result.matched
+      const verified = result.valid && result.matched;
+      if (verified) {
+        licenseReady = true;
+        hideLicenseGate();
+        await ensureAuth();
+        await restoreSession();
+      }
+      originalToast(verified
         ? `授權已驗證並保存（${licenseState?.offline ? '離線寬限' : licenseState?.recovery === 'device' ? '雲端恢復' : '雲端驗證'}／${result.context}）`
         : result.hasStored
           ? `授權資料已保存，但驗證未通過：${licenseValidationMessage || '請連網重新驗證。'}`
@@ -743,6 +755,10 @@
 
   function showLicenseGate(message = '') {
     if (!LICENSE_ENABLED) return false;
+    if (licenseReady && licenseState) {
+      hideLicenseGate();
+      return false;
+    }
     const gate = q('#licenseGate');
     if (!gate) return;
     q('#loginGate')?.classList.add('hidden');
