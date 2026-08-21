@@ -145,7 +145,7 @@ function save(){
 }
 function saveSettings(){localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings))}
 function getSystemName(){return String(settings.systemName||'雙發付款管理系統').trim()||'雙發付款管理系統'}
-function applySystemName(){const name=getSystemName();const h=$('#systemNameHeader');if(h)h.textContent=name;document.title=`${name} V8.3 Build 0322・個人單機版`;const loginTitle=document.querySelector('#loginSystemName');if(loginTitle)loginTitle.textContent=name;const apple=document.querySelector('meta[name="apple-mobile-web-app-title"]');if(apple)apple.setAttribute('content',name.slice(0,12))}
+function applySystemName(){const name=getSystemName();const h=$('#systemNameHeader');if(h)h.textContent=name;document.title=`${name} V8.3 Build 0323・測試版最多10筆`;const loginTitle=document.querySelector('#loginSystemName');if(loginTitle)loginTitle.textContent=name;const apple=document.querySelector('meta[name="apple-mobile-web-app-title"]');if(apple)apple.setAttribute('content',name.slice(0,12))}
 function applyHomeLabels(){const d={payment:'新增付款',settlement:'查詢付款資料',reminder:'支票管理',report:'報表中心'},x={...d,...(settings.homeLabels||{})};$$('[data-home-label]').forEach(el=>el.textContent=x[el.dataset.homeLabel]||d[el.dataset.homeLabel]);const hero=$('#homeHeroTitle');if(hero)hero.textContent=[x.payment,x.settlement,x.reminder,x.report].join('、')}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function formatCheckNo(v){const raw=String(v||'').trim().toUpperCase().replace(/[－–—]/g,'-').replace(/\s+/g,'');const m=raw.match(/^([A-Z]+)-?(\d+)$/);return m?`${m[1]}-${m[2]}`:raw}
@@ -166,7 +166,15 @@ async function compressAllPhotosSafely(){if(!confirm('系統只會壓縮照片�
 function renderStorageStatus(){const el=$('#storageStatus');if(!el)return;const bytes=dbSizeBytes();let photos=0;(db.payments||[]).forEach(p=>photos+=(p.invoicePhotos||[]).length+(p.checkPhoto?1:0)+(p.signatureData?1:0));el.innerHTML=`目前資料量：<b>${fmtSize(bytes)}</b><br>手機內照片與簽名：<b>${photos} 份</b><br><small>所有照片永久保留。空間不足時只會壓縮，不會自動刪除。</small>`}
 const titles={home:'首頁',vendor:'新增付款',payment:'付款資料',method:'付款方式',bank:'選擇銀行',check:'支票／轉帳資料',photos:'拍照存證',signature:'廠商簽名',confirm:'確認資料',done:'完成',search:'查詢付款',detail:'付款明細',checks:'支票管理',report:'報表中心',vendors:'廠商基本資料',settings:'系統設定',todayMail:'本日郵寄清單'};
 function show(id,push=true){const previous=$('.page.active')?.id||'';if(previous==='signature'&&id!=='signature')leaveSignaturePage();$$('.page').forEach(p=>p.classList.toggle('active',p.id===id));$('#pageTitle').textContent=titles[id]||'';$('#backBtn').classList.toggle('hidden',id==='home');$('#homeBtn').classList.toggle('hidden',id==='home');if(push&&history.at(-1)!==id)history.push(id);scrollTo(0,0);if(id==='signature')setTimeout(sizeCanvas,80);if(id==='search')runSearch();if(id==='checks')renderChecks();if(id==='report')renderReportControls();if(id==='settings')renderSettings();if(id==='vendors')renderVendorManager();if(id==='vendor')renderLists()}
-$('#backBtn').onclick=()=>{history.pop();show(history.at(-1)||'home',false)};$('#homeBtn').onclick=()=>{history=['home'];show('home',false)};$$('[data-go]').forEach(b=>b.onclick=()=>{const id=b.dataset.go;if(id==='vendor')start();show(id)});
+function trialPaymentLimitReached(){
+  const status=window.shuangfaTrialStatus?.();
+  if(!status?.reached)return false;
+  const message=`測試版最多操作 ${status.limit} 筆資料，目前已達上限，請購買正式授權。`;
+  toast(message);
+  if(window.shuangfaSpeak)window.shuangfaSpeak(message,'error',true);
+  return true;
+}
+$('#backBtn').onclick=()=>{history.pop();show(history.at(-1)||'home',false)};$('#homeBtn').onclick=()=>{history=['home'];show('home',false)};$$('[data-go]').forEach(b=>b.onclick=()=>{const id=b.dataset.go;if(id==='vendor'&&trialPaymentLimitReached())return;if(id==='vendor')start();show(id)});
 function vendorLabel(v){return `${v.code}－${v.name}`}
 function findVendor(code){return db.vendors.find(v=>String(v.code)===String(code))}
 function renderLists(){const el=$('#vendorOptions');if(el)el.innerHTML=db.vendors.slice().sort((a,b)=>String(a.code).localeCompare(String(b.code),'zh-Hant',{numeric:true})).map(v=>`<option value="${esc(vendorLabel(v))}"></option>`).join('')}
@@ -483,6 +491,7 @@ function nextSerial(){const d=new Date(),z=n=>String(n).padStart(2,'0'),prefix=`
 $('#editBtn').onclick=()=>show('payment');
 async function savePayment(skipConfirm=false,sourceBtn=null){
   if(isSaving)return;
+  if(trialPaymentLimitReached())return;
   if(!signatureData)return toast('簽名資料尚未完成，請返回重新簽名');
   if(!skipConfirm&&!confirm('確定要儲存這筆付款資料嗎？'))return;
   isSaving=true;const btn=sourceBtn||$('#saveBtn');btn.disabled=true;btn.textContent='儲存中…';
@@ -509,7 +518,7 @@ async function savePayment(skipConfirm=false,sourceBtn=null){
     if((savedPayment.invoicePhotos||[]).length!==invoicePhotos.length||(savedPayment.invoicePhotos||[]).some(item=>!item))throw new Error('請款單照片沒有完整寫入，請重新儲存');
     if(signatureData&&!savedPayment.signatureData)throw new Error('廠商簽名沒有完整寫入，請重新儲存');
     if(checkPhoto&&!savedPayment.checkPhoto)throw new Error('支票照片沒有完整寫入，請重新儲存');
-    lastId=id;renderDue();
+    lastId=id;renderDue();window.shuangfaRenderTrialNotice?.();
     addToMailBatch(p);
     $('#searchInput').value='';$('#statusFilter').value='';runSearch();
     // 儲存完成立即跳到本筆明細，避免使用者再次按儲存。
@@ -539,7 +548,7 @@ async function savePayment(skipConfirm=false,sourceBtn=null){
     isSaving=false;btn.disabled=false;btn.textContent='確認存檔';
   }
 }
-$('#saveBtn').onclick=()=>savePayment(false,$('#saveBtn'));$('#newAgain').onclick=()=>{start();history=['home','vendor'];show('vendor',false)};$('#viewLast').onclick=()=>openDetail(lastId);
+$('#saveBtn').onclick=()=>savePayment(false,$('#saveBtn'));$('#newAgain').onclick=()=>{if(trialPaymentLimitReached())return;start();history=['home','vendor'];show('vendor',false)};$('#viewLast').onclick=()=>openDetail(lastId);
 $('#searchInput').oninput=runSearch;$('#statusFilter').onchange=runSearch;function runSearch(){const statusSelect=$('#statusFilter');if(statusSelect&&!Array.from(statusSelect.options).some(o=>o.value==='待寄出'))statusSelect.insertAdjacentHTML('beforeend','<option value="待寄出">待寄出</option>');const q=($('#searchInput').value||'').trim().toLowerCase(),st=statusSelect?.value||'',a=db.payments.filter(p=>{const status=p.status||statusFor(p);const partsText=paymentPartsOf(p).flatMap(part=>[part.type,part.bank,part.checkNumber,part.checkDueDate]).join(' ');const monthValues=Array.isArray(p.months)?p.months.join(' '):'';const haystack=[p.vendor,p.vendorCode,p.serial,p.checkNumber,p.bank,p.mailStickerNumber,p.month,monthValues,partsText].map(x=>String(x||'')).join(' ').toLowerCase();return(!q||haystack.includes(q))&&(!st||status===st)});const counter=$('#paymentCount');if(counter)counter.textContent=`全部 ${db.payments.length} 筆｜目前顯示 ${a.length} 筆`;$('#paymentList').innerHTML=a.length?a.map(p=>{const status=p.status||statusFor(p);return `<div class="record"><h3>${esc(p.serial||'尚未產生')}｜${esc(p.vendorCode||'')} ${esc(p.vendor||'')}</h3><div class="meta">${esc(p.month||'—')}｜實付 $${money(p.amountPaid)}<br>付款憑證：${esc(voucher(p))}　<span class="status-pill">${esc(status)}</span></div><button class="secondary full" data-detail="${esc(p.id)}">查看明細</button></div>`}).join(''):'<p class="hint">尚無符合資料。</p>';$$('[data-detail]').forEach(b=>b.onclick=()=>openDetail(b.dataset.detail))}
 function openDetail(id){const p=db.payments.find(x=>x.id===id);if(!p)return;currentDetailId=id;$('#detailBody').innerHTML=htmlRows([...rows(p),['建立時間',p.createdAt?new Date(p.createdAt).toLocaleString('zh-TW'):'—']]);const status=p.status||statusFor(p);$('#settleBtn').classList.toggle('hidden',status==='已銷帳'||status==='作廢');const evidence=[...(p.invoicePhotos||[]).map((src,i)=>({src,label:`請款單／貨單照片 ${i+1}`})),...(p.checkPhoto?[{src:p.checkPhoto,label:'支票／客票照片'}]:[]),...(p.signatureData?[{src:p.signatureData,label:'廠商簽名'}]:[])];$('#detailImages').innerHTML=evidence.map(item=>`<figure class="evidence-item"><figcaption>${esc(item.label)}</figcaption><img src="${item.src}" alt="${esc(item.label)}"></figure>`).join('');show('detail')}
 async function deleteCurrentPayment(){const p=db.payments.find(x=>x.id===currentDetailId);if(!p)return toast('找不到這筆付款資料');if(!confirm(`確定要刪除這筆付款資料嗎？\n\n廠商：${p.vendor||''}\n實付金額：$${money(p.amountPaid)}\n\n付款、照片、支票照片與廠商簽名都會一併移除。`))return;const typed=prompt('為避免誤刪，請輸入「刪除」兩個字：','');if(typed!=='刪除')return toast('未輸入正確文字，已取消刪除');const id=p.id,before=structuredClone(db);db.payments=db.payments.filter(x=>x.id!==id);db.correctionLogs=(db.correctionLogs||[]).filter(x=>x.paymentId!==id);Object.values(db.checks||{}).forEach(list=>list.forEach(item=>{if(item.paymentId===id){item.status='未使用';delete item.paymentId;delete item.dueDate}}));try{const saved=await saveAndVerifyDatabase();if(saved.payments.some(x=>x.id===id))throw new Error('刪除結果驗證失敗');db=saved;currentDetailId='';lastId='';runSearch();renderDue();toast('本筆付款資料已刪除');history=['home','search'];show('search',false)}catch(error){db=before;try{if(storageMode==='indexeddb')await writeToIndexedDB(db);else localStorage.setItem(KEY,JSON.stringify(db))}catch(rollbackError){console.error('刪除回復失敗',rollbackError)}console.error('刪除付款失敗',error);alert('刪除未完成，原付款資料已保留。')}}
@@ -650,7 +659,7 @@ $('#saveHomeLabels').onclick=()=>{settings.homeLabels={payment:$('#homeLabelPaym
 $('#addBank').onclick=async()=>{const v=$('#newBank').value.trim();if(!v)return;if(db.banks.includes(v))return toast('銀行已存在');const before=structuredClone(db);db.banks.push(v);db.checks[v]??=[];if(!await persistDatabaseSafely(before,'新增銀行保存失敗，原資料已保留'))return;$('#newBank').value='';renderSettings()};$('#addMethod').onclick=async()=>{const v=$('#newMethod').value.trim();if(!v)return;if(db.methods.includes(v))return toast('付款方式已存在');const before=structuredClone(db);db.methods.push(v);if(!await persistDatabaseSafely(before,'新增付款方式保存失敗，原資料已保留'))return;$('#newMethod').value='';renderSettings()};
 $('#autoBackupToggle').onchange=e=>{settings.autoBackup=e.target.checked;saveSettings();renderBackupStatus()};function renderBackupStatus(){const snaps=JSON.parse(localStorage.getItem(BACKUP_KEY)||'[]'),last=localStorage.getItem('shuangfa_last_backup');$('#backupStatus').innerHTML=`自動備份：<b>${settings.autoBackup?'開啟':'關閉'}</b><br>手機內備份：${snaps.length} 份<br>最近完整備份：${last?new Date(last).toLocaleString('zh-TW'):'尚未備份'}`}
 function backupFileName(){const d=new Date(),z=n=>String(n).padStart(2,'0');return `雙發付款完整備份_${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}.json`}
-function downloadBackup(msg=true){const payload={app:getSystemName(),version:'V8.3 Build 0322・個人單機版',backupAt:new Date().toISOString(),data:db,settings},blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=backupFileName();a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);localStorage.setItem('shuangfa_last_backup',new Date().toISOString());renderBackupStatus();renderInternalBackupStatus();renderStorageStatus();if(msg){toast('完整備份檔已產生');if(window.shuangfaSpeak)window.shuangfaSpeak('資料已備份完成。','backup',true)}}
+function downloadBackup(msg=true){const payload={app:getSystemName(),version:'V8.3 Build 0323・測試版最多10筆',backupAt:new Date().toISOString(),data:db,settings},blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=backupFileName();a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);localStorage.setItem('shuangfa_last_backup',new Date().toISOString());renderBackupStatus();renderInternalBackupStatus();renderStorageStatus();if(msg){toast('完整備份檔已產生');if(window.shuangfaSpeak)window.shuangfaSpeak('資料已備份完成。','backup',true)}}
 async function importBackupFile(event){const file=event.target.files?.[0];event.target.value='';if(!file)return;const before=structuredClone(db),beforeSettings=structuredClone(settings);try{const raw=JSON.parse(await file.text()),x=raw.data||raw;if(!x||!Array.isArray(x.payments)||!Array.isArray(x.vendors))throw new Error('備份檔格式不正確');const imported=migrate(x);const importedSettings=raw.settings&&typeof raw.settings==='object'?raw.settings:null;db=imported;if(importedSettings){const base=loadSettings();settings={...base,...importedSettings,homeLabels:{...base.homeLabels,...(importedSettings.homeLabels||{})}}}await saveAndVerifyDatabase();const saved=await readPersistedDatabase();if(fullDatabaseEvidenceShape(saved)!==fullDatabaseEvidenceShape(imported))throw new Error('備份還原結果驗證失敗');saveSettings();db=saved;renderLists();renderSettings();renderDue();toast(`完整備份已還原並驗證（${saved.payments.length} 筆）`);if(window.shuangfaSpeak)window.shuangfaSpeak('備份資料已還原完成。','backup',true)}catch(error){db=before;settings=beforeSettings;try{await saveWithStorageRecovery()}catch(rollbackError){console.error('備份還原回復失敗',rollbackError)}console.error('備份匯入失敗',error);alert('備份還原失敗，原付款資料已保留。請確認備份檔完整後再試。')}}
 async function readLatestInternalBackup(){const source=localStorage.getItem('shuangfa_latest_full_backup_source');if(source!=='local'){try{if(typeof readFromIndexedDB==='function'){const backup=await readFromIndexedDB(IDB_BACKUP_KEY);if(backup?.data&&Array.isArray(backup.data.payments))return backup}}catch(error){console.warn('讀取 IndexedDB 內部備份失敗，改讀本機備援',error)}}try{const raw=localStorage.getItem(INTERNAL_BACKUP_FALLBACK_KEY);const backup=raw?JSON.parse(raw):null;return backup?.data&&Array.isArray(backup.data.payments)?backup:null}catch(error){console.warn('讀取本機完整備援失敗',error);return null}}
 async function renderInternalBackupStatus(){const el=$('#internalBackupStatus');if(!el)return;try{const backup=await readLatestInternalBackup();if(!backup?.data){el.textContent='最近內部備份：尚未建立';return}const at=backup.backupAt?new Date(backup.backupAt).toLocaleString('zh-TW'):'時間不明';el.innerHTML=`最近內部備份：<b>${esc(at)}</b><br>備份原因：${esc(backup.reason||'系統自動備份')}｜付款：<b>${(backup.data.payments||[]).length} 筆</b>`}catch(error){el.textContent='最近內部備份：目前無法讀取';console.warn('內部備份狀態讀取失敗',error)}}
@@ -746,8 +755,8 @@ function updateOfflineStatus(){
   const el=document.querySelector('#offlineStatus');
   if(!el)return;
   el.innerHTML=navigator.onLine
-    ? '目前：<b>已連線</b>。目前版本 V8.3 Build 0322，可檢查新版；付款資料仍保存在本機。'
-    : '目前：<b>離線使用中</b>。目前版本 V8.3 Build 0322；新增、查詢、簽名、列印與備份仍可操作。';
+    ? '目前：<b>已連線</b>。目前版本 V8.3 Build 0323，可檢查新版；付款資料仍保存在本機。'
+    : '目前：<b>離線使用中</b>。目前版本 V8.3 Build 0323；新增、查詢、簽名、列印與備份仍可操作。';
 }
 window.addEventListener('online',updateOfflineStatus);
 window.addEventListener('offline',updateOfflineStatus);
@@ -772,7 +781,7 @@ let swRegistration=null;
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
     try{
-      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83422',{scope:'./',updateViaCache:'none'});
+      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83423',{scope:'./',updateViaCache:'none'});
       activateWaitingWorker(swRegistration);
       watchInstallingWorker(swRegistration);
       updateOfflineStatus();
@@ -875,7 +884,7 @@ function fullInternalBackupEvidenceShape(payload){return JSON.stringify({data:fu
 // 登出與閒置登出使用的內部完整備份：不開啟下載預覽頁，直接保存到本機 IndexedDB。
 window.shuangfaInternalBackup=async function(reason='系統自動備份'){
   const backupAt=new Date().toISOString();
-  const payload={app:getSystemName(),version:'V8.3 Build 0322・內部自動備份版',backupAt,reason,data:structuredClone(db),settings:structuredClone(settings)};
+  const payload={app:getSystemName(),version:'V8.3 Build 0323・內部自動備份版',backupAt,reason,data:structuredClone(db),settings:structuredClone(settings)};
   let saved=false;
   try{
     if(typeof writeToIndexedDB==='function'){
