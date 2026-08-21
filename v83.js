@@ -363,6 +363,18 @@
     }
   }
 
+  // 主畫面 App 啟動時，Safari 可能需要一點時間讀回 IndexedDB／Cookie。
+  // 第一次讀取失敗不應立刻把使用者送到授權碼畫面；自動重試後仍失敗才要求重新啟用。
+  async function recoverLicenseAtStartup() {
+    const retryDelays = [0, 450, 1000, 2000];
+    for (const delay of retryDelays) {
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      licenseReady = await ensureLicense();
+      if (licenseReady && licenseState) return true;
+    }
+    return false;
+  }
+
   async function requestPersistentStorage() {
     try {
       if (navigator.storage?.persist) await navigator.storage.persist();
@@ -2166,7 +2178,7 @@
     }
     if (typeof hydrateFromIndexedDB === 'function') await hydrateFromIndexedDB();
     if (typeof createOpeningBackup === 'function') await createOpeningBackup();
-    licenseReady = await ensureLicense();
+    licenseReady = await recoverLicenseAtStartup();
     renderLicenseInfo();
     syncLoginBrand();
     const systemInfo = q('#systemInfoCard .backup-status');
@@ -2184,11 +2196,6 @@
     saveSettings();
     applyVoiceSettings();
     installEvents();
-    // 若啟動時第一次雲端恢復遇到時序或短暫網路問題，
-    // 自動執行和「檢查授權保存」相同的恢復流程，不要求使用者再按一次。
-    if (!licenseReady && LICENSE_ENABLED) {
-      await checkLicenseStorage(null);
-    }
     if (!licenseReady) {
       showLicenseGate(licenseValidationMessage || '尚未啟用授權，請連網輸入公司專用授權碼。');
       return;

@@ -772,7 +772,7 @@ let swRegistration=null;
 if('serviceWorker' in navigator){
   window.addEventListener('load',async()=>{
     try{
-      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83421',{scope:'./',updateViaCache:'none'});
+      swRegistration=await navigator.serviceWorker.register('./sw.js?v=83422',{scope:'./',updateViaCache:'none'});
       activateWaitingWorker(swRegistration);
       watchInstallingWorker(swRegistration);
       updateOfflineStatus();
