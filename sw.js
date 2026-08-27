@@ -1,10 +1,10 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0321-cloud-license-v3';
+const CACHE_NAME='shuangfa-payment-v8.3-build0323-photo-save-v1';
 const LICENSE_CACHE_NAME='shuangfa-payment-license-v1';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83423',
-  './cloud-config.js?v=83423','./app.js?v=83423','./v83.js?v=83423',
+  './styles.css?v=83425',
+  './cloud-config.js?v=83425','./app.js?v=83425','./v83.js?v=83425',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'

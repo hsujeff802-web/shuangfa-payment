@@ -178,9 +178,9 @@ main{width:min(100%,820px);margin:0 auto;padding:18px 14px calc(42px + env(safe-
 .home-card.primary.add-payment-card>*{position:relative;z-index:1}
 .home-card.primary.add-payment-card::before{content:none}
 .home-card.primary.add-payment-card>.home-card-badge{position:absolute;right:16px;top:14px;padding:4px 9px;border:1px solid rgba(255,255,255,.25);border-radius:999px;background:rgba(255,255,255,.14);color:#fff;font-size:10px;font-weight:850;z-index:2}
-.home-card.primary.add-payment-card b.home-payment-title{display:inline-flex;align-items:center;justify-content:center;gap:3px;max-width:100%;font-size:clamp(23px,6vw,31px);letter-spacing:.02em;line-height:1.2;white-space:nowrap}
+.home-card.primary.add-payment-card b.home-payment-title{display:inline-flex;align-items:center;justify-content:center;gap:0;max-width:100%;font-size:clamp(23px,6vw,31px);letter-spacing:.02em;line-height:1.2;white-space:nowrap}
 .home-card.primary.add-payment-card .home-payment-title [data-home-label]{color:inherit;font-size:inherit;font-weight:inherit;line-height:inherit}
-.home-payment-plus{display:inline-block;color:inherit;font-size:1em;font-style:normal;font-weight:900;line-height:1}
+.home-payment-plus{display:inline-block;color:inherit;font-size:1em;font-style:normal;font-weight:900;line-height:1;margin-left:1px}
 .home-card.primary.add-payment-card>span{font-size:15px}
 .home-card-flow{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:10px;padding:6px 9px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.12);color:rgba(255,255,255,.95);font-size:11px;font-weight:800;line-height:1.2}
 .home-card-flow em{font-style:normal;white-space:nowrap}
@@ -592,3 +592,10 @@ body.license-starting #licenseGate{display:none!important}
   #reportOutput .report-table td:last-child{border-bottom:0}
   #reportOutput .report-table td::before{content:attr(data-label);font-weight:850;color:var(--brand-deep)}
 }
+
+/* Build 0322 hotfix：三段折扣與付稅金 */
+.discount-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.discount-grid label{min-width:0}
+.discount-grid input{width:100%}
+.discount-hint{margin-top:-4px}
+@media(max-width:640px){.discount-grid{grid-template-columns:1fr}.discount-grid label{margin-bottom:0}}
