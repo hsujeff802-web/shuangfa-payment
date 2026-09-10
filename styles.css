@@ -599,3 +599,8 @@ body.license-starting #licenseGate{display:none!important}
 .discount-grid input{width:100%}
 .discount-hint{margin-top:-4px}
 @media(max-width:640px){.discount-grid{grid-template-columns:1fr}.discount-grid label{margin-bottom:0}}
+
+/* Build 0324：付款第 2 頁固定顯示目前廠商 */
+.payment-vendor-card{margin:-4px 0 16px;padding:12px 14px;border:1px solid #b9dddf;border-radius:15px;background:#f2fbfb;box-shadow:0 4px 12px rgba(21,154,163,.07)}
+.payment-vendor-card span{display:block;font-size:13px;font-weight:800;color:#6a7d7f;margin-bottom:3px}
+.payment-vendor-card b{display:block;font-size:20px;line-height:1.3;color:#174f53;word-break:break-word}
