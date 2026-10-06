@@ -953,13 +953,16 @@ if(updateBtn)updateBtn.onclick=async()=>{
 // ===== V8.3 DEV Build 014：清除付款資料與本日郵寄清單 =====
 function todayMailItems(dateValue){
   const d=dateValue||localDate();
-  return db.payments.filter(p=>p.method==='郵寄支票'&&((p.mailDate||'')===d||(!p.mailDate&&paymentDate(p)===d)));
+  const numericTail=value=>{const m=String(value||'').match(/(\d+)(?!.*\d)/);return m?Number(m[1]):Number.MAX_SAFE_INTEGER};
+  return db.payments
+    .filter(p=>p.method==='郵寄支票'&&((p.mailDate||'')===d||(!p.mailDate&&paymentDate(p)===d)))
+    .sort((a,b)=>numericTail(a.checkNumber)-numericTail(b.checkNumber)||String(a.checkNumber||'').localeCompare(String(b.checkNumber||''),'zh-Hant',{numeric:true})||numericTail(a.mailStickerNumber)-numericTail(b.mailStickerNumber));
 }
 function renderTodayMail(){
   const input=$('#todayMailDate');if(!input)return;
   if(!input.value)input.value=localDate();
   const a=todayMailItems(input.value),total=a.reduce((s,p)=>s+Number(p.amountPaid||0),0);
-  const stickers=[...new Set(a.map(p=>p.mailStickerNumber).filter(Boolean))];
+  const stickers=[...new Set(a.map(p=>p.mailStickerNumber).filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y),'zh-Hant',{numeric:true}));
   $('#todayMailSummary').innerHTML=`寄件日期：<b>${esc(input.value)}</b><br>共 <b>${a.length}</b> 筆｜合計 <b>NT$ ${money(total)}</b><br>郵寄貼紙號碼：${stickers.length?stickers.map(esc).join('、'):'尚未填寫'}`;
   $('#todayMailList').innerHTML=a.length?a.map((p,i)=>`<div class="record"><h3>${i+1}. ${esc(p.vendorCode||'')} ${esc(p.vendor||'')}</h3><div class="meta">支票號碼：${esc(p.checkNumber||'—')}<br>到期日：${esc(p.checkDueDate||'—')}｜金額：NT$ ${money(p.amountPaid)}<br>貼紙號碼：${esc(p.mailStickerNumber||'—')}</div><button class="secondary full" data-mail-detail="${p.id}">查看明細</button></div>`).join(''):'<p class="hint">這一天沒有郵寄支票資料。</p>';
   $$('[data-mail-detail]').forEach(b=>b.onclick=()=>openDetail(b.dataset.mailDetail));
@@ -977,7 +980,7 @@ async function markAllTodayMailSent(){
 function printTodayMailList(){
   const date=$('#todayMailDate')?.value||localDate(),a=todayMailItems(date);
   if(!a.length)return toast('這一天沒有郵寄支票資料');
-  const stickers=[...new Set(a.map(p=>p.mailStickerNumber).filter(Boolean))].join('、');
+  const stickers=[...new Set(a.map(p=>p.mailStickerNumber).filter(Boolean))].sort((x,y)=>String(x).localeCompare(String(y),'zh-Hant',{numeric:true})).join('、');
   printMailBatch(a,a.length,stickers,date);
 }
 async function clearPaymentDataSafely(){
