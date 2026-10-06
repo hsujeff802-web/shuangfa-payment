@@ -964,6 +964,16 @@ function renderTodayMail(){
   $('#todayMailList').innerHTML=a.length?a.map((p,i)=>`<div class="record"><h3>${i+1}. ${esc(p.vendorCode||'')} ${esc(p.vendor||'')}</h3><div class="meta">支票號碼：${esc(p.checkNumber||'—')}<br>到期日：${esc(p.checkDueDate||'—')}｜金額：NT$ ${money(p.amountPaid)}<br>貼紙號碼：${esc(p.mailStickerNumber||'—')}</div><button class="secondary full" data-mail-detail="${p.id}">查看明細</button></div>`).join(''):'<p class="hint">這一天沒有郵寄支票資料。</p>';
   $$('[data-mail-detail]').forEach(b=>b.onclick=()=>openDetail(b.dataset.mailDetail));
 }
+async function markAllTodayMailSent(){
+  const date=$('#todayMailDate')?.value||localDate(),items=todayMailItems(date),pending=items.filter(p=>(p.status||statusFor(p))==='待寄出');
+  if(!items.length)return toast('這一天沒有郵寄支票資料');
+  if(!pending.length)return toast('這一天的郵寄支票都已經確認寄出');
+  const total=pending.reduce((s,p)=>s+Number(p.amountPaid||0),0);
+  if(!confirm(`確定將 ${date} 的 ${pending.length} 筆郵寄支票一次標記為「已寄出」？\n\n合計：NT$ ${money(total)}\n\n確認後可直接列印本日郵寄清單。`))return;
+  const before=structuredClone(db),now=new Date().toISOString(),operator=(typeof currentUser!=='undefined'&&(currentUser?.name||currentUser?.username))||'徐鵬雙';
+  pending.forEach(p=>{p.status='已寄出';p.mailedAt=now;p.mailedBy=operator;p.updatedAt=now});
+  try{db=await saveAndVerifyDatabase();renderTodayMail();runSearch();renderDue();toast(`已確認 ${pending.length} 筆全部寄出`);if(confirm(`已完成 ${pending.length} 筆「已寄出」。\n\n現在要列印本日郵寄清單嗎？`))printTodayMailList()}catch(error){db=before;try{if(storageMode==='indexeddb')await writeToIndexedDB(db);else localStorage.setItem(KEY,JSON.stringify(db))}catch(e){console.error(e)}console.error(error);alert('批次寄出狀態未保存，原資料已保留。')}
+}
 function printTodayMailList(){
   const date=$('#todayMailDate')?.value||localDate(),a=todayMailItems(date);
   if(!a.length)return toast('這一天沒有郵寄支票資料');
@@ -992,6 +1002,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   const d=$('#todayMailDate');if(d)d.value=localDate();
   $('#refreshTodayMail')?.addEventListener('click',renderTodayMail);
   $('#todayMailDate')?.addEventListener('change',renderTodayMail);
+  $('#markAllMailSent')?.addEventListener('click',markAllTodayMailSent);
   $('#printTodayMail')?.addEventListener('click',printTodayMailList);
   $('#clearPaymentDataBtn')?.addEventListener('click',clearPaymentDataSafely);
 });
