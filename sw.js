@@ -1,4 +1,4 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0331-clear-placeholders-v1';
+const CACHE_NAME='shuangfa-payment-v8.3-build0331-info-sync-v2';
 const LICENSE_CACHE_NAME='shuangfa-payment-license-v1';
 const APP_SHELL=[
   './',
