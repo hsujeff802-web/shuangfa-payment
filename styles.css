@@ -628,3 +628,10 @@ body.license-starting #licenseGate{display:none!important}
 .report-vendor-name{color:#007f8c;background:#e4f8fa;border-radius:7px;padding:2px 5px;font-weight:950;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .report-paid-amount,.report-paid-total{color:#c62828;background:#fff0ed;border-radius:7px;padding:2px 5px;font-weight:950;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .report-due-date{color:#c62828!important;font-weight:950;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+
+/* Build 0331：未付款及已逾期支票金額顯示於清單右上角 */
+.pending-check-head-meta{display:grid;justify-items:end;gap:3px;text-align:right;color:#35565c;font-size:13px;line-height:1.35}
+.pending-check-total{color:#075f67;font-size:15px;font-weight:950;white-space:nowrap}
+.pending-check-overdue-total{color:#b42318;font-size:14px;font-weight:950;white-space:nowrap}
+@media(max-width:600px){.pending-check-head{align-items:flex-start}.pending-check-head-meta{font-size:12px}.pending-check-total,.pending-check-overdue-total{font-size:13px}}
