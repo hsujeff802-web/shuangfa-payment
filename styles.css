@@ -622,3 +622,9 @@ body.license-starting #licenseGate{display:none!important}
 .pending-check-state.is-today{color:#a85a00}
 .pending-check-state.is-overdue{color:#b42318}
 @media(max-width:600px){.pending-check-row{grid-template-columns:82px minmax(0,1fr);grid-template-areas:"date main" "amount state"}.pending-check-amount{justify-self:start}.pending-check-state{justify-self:end;text-align:right}}
+
+
+/* Build 0330：報表廠商與實付醒目配色、支票到期日紅字 */
+.report-vendor-name{color:#007f8c;background:#e4f8fa;border-radius:7px;padding:2px 5px;font-weight:950;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.report-paid-amount,.report-paid-total{color:#c62828;background:#fff0ed;border-radius:7px;padding:2px 5px;font-weight:950;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.report-due-date{color:#c62828!important;font-weight:950;-webkit-print-color-adjust:exact;print-color-adjust:exact}
