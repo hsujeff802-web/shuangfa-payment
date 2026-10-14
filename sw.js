@@ -1,10 +1,10 @@
-const CACHE_NAME='shuangfa-payment-v8.3-build0328-undo-settlement-v1';
+const CACHE_NAME='shuangfa-payment-v8.3-build0329-clear-placeholders-v1';
 const LICENSE_CACHE_NAME='shuangfa-payment-license-v1';
 const APP_SHELL=[
   './',
   './index.html',
-  './styles.css?v=83513',
-  './cloud-config.js?v=83513','./app.js?v=83513','./v83.js?v=83513',
+  './styles.css?v=83514',
+  './cloud-config.js?v=83514','./app.js?v=83514','./v83.js?v=83514',
   './manifest.json',
   './icon-192.png',
   './icon-512.png'
