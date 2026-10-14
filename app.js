@@ -879,8 +879,8 @@ function updateOfflineStatus(){
   const el=document.querySelector('#offlineStatus');
   if(!el)return;
   el.innerHTML=navigator.onLine
-    ? '目前：<b>已連線</b>。目前版本 V8.3 Build 0327，可檢查新版；付款資料仍保存在本機。'
-    : '目前：<b>離線使用中</b>。目前版本 V8.3 Build 0327；新增、查詢、簽名、列印與備份仍可操作。';
+    ? '目前：<b>已連線</b>。目前版本 V8.3 Build 0329，可檢查新版；付款資料仍保存在本機。'
+    : '目前：<b>離線使用中</b>。目前版本 V8.3 Build 0329；新增、查詢、簽名、列印與備份仍可操作。';
 }
 window.addEventListener('online',updateOfflineStatus);
 window.addEventListener('offline',updateOfflineStatus);
