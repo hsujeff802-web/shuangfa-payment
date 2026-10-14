@@ -234,7 +234,7 @@ input,select,textarea{
   transition:border-color .16s ease,box-shadow .16s ease,background .16s ease;
 }
 textarea{min-height:100px;resize:vertical;line-height:1.5}
-input::placeholder,textarea::placeholder{color:#9aabad;font-weight:500}
+input::placeholder,textarea::placeholder{color:#536a6f;opacity:1;font-weight:500}
 input:focus,select:focus,textarea:focus{
   border-color:#16848a;
   background:#fff;
@@ -514,7 +514,7 @@ body.license-starting #licenseGate{display:none!important}
 .login-input-row:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(21,154,163,.14)}
 .login-input-icon{font-size:22px;line-height:1;flex:0 0 auto}
 .login-input-row input{width:100%;min-width:0;margin:0;border:0!important;outline:0!important;box-shadow:none!important;background:transparent;padding:15px 0;font-size:18px;min-height:54px}
-.login-input-row input::placeholder{color:#81989b}
+.login-input-row input::placeholder{color:#536a6f;opacity:1}
 
 .home-card.logout-card{border-color:#f0c8c8;background:#fffafa;color:#8c2f2f}.home-card.logout-card::before{content:'↪';background:#fdeaea;color:#a33;border-color:#f2cccc}.home-card.logout-card span{color:#8b5a5a}
 
